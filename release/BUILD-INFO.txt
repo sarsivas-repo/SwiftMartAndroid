@@ -1,0 +1,6 @@
+SwiftMart 1.0.8
+Publisher: Saravanakumar
+Website: https://github.com/sarsivas-repo/SwiftMartAndroid
+Licensing: one 30-day installation trial; reusable signed duration extensions. Updates do not reset the trial.
+Source commit: 0ed0903fd9841457fea0c35d242ec85473ce2d72
+Built at: 2026-11-27T13:37:59Z
