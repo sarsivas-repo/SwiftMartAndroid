@@ -4,7 +4,7 @@ This project adapts the Flutter application from `SwiftMart-Frontend` for Androi
 It is a work in progress, not a production release: standalone salary and
 reports are not yet implemented.
 
-Each release provides one signed [APK](release/SwiftMart-1.0.9-android.apk). Publisher:
+Each release provides one signed [APK](release/SwiftMart-1.0.10-android.apk). Publisher:
 **Saravanakumar**. Verify them against [SHA256SUMS](release/SHA256SUMS); publishing
 details are in [BUILD-INFO.txt](release/BUILD-INFO.txt). They have not been
 validated on a physical Android device.
@@ -41,6 +41,13 @@ login. Use HTTPS whenever possible. HTTP requires explicit confirmation because
 passwords and business data are transmitted without encryption. A server bound
 to `127.0.0.1` on a different device is not reachable by the phone; configure
 secure network access on the server first.
+
+Connected mode supports server-configured UPI QR checkout and payment history;
+an administrator selects the provider in Settings. Google Pay is a customer's UPI
+app, not a separate provider. Android standalone does not support provider
+checkout. Configure and reconcile payments on the server as described in
+`SwiftMart-Infra/native/PAYMENTS.md`. Live provider transactions have not been
+tested with this release.
 
 The standalone test preview stores accounts in an app-private SQLite database,
 separate from server data. Create a local admin at first launch. That admin can
@@ -119,7 +126,7 @@ both `version` and Android build number for a new release. Publish only the
 latest APK, checksums and publishing information; older builds stay in Git
 history. Keep the same APK signing key and application ID.
 For manual licensed builds, pass `--dart-define=SWIFTMART_LICENSED=true` and
-`--dart-define=SWIFTMART_VERSION=1.0.9` (matching `--build-name`).
+`--dart-define=SWIFTMART_VERSION=1.0.10` (matching `--build-name`).
 Normal debug/source builds retain unrestricted development behavior.
 
 Keep the keystore and password backed up securely: Android upgrades require the

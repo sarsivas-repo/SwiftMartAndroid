@@ -9,6 +9,7 @@ import '../providers/customer_provider.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/product_widgets.dart';
+import '../widgets/sandbox_payment_dialog.dart';
 import '../utils/app_utils.dart';
 import '../utils/constants.dart';
 
@@ -665,6 +666,11 @@ class _POSScreenState extends State<POSScreen> {
                             icon: const Icon(Icons.add_shopping_cart),
                             label: const Text('Sell without stock'),
                           ),
+                          if (!ApiService.isLocal)
+                            OutlinedButton(
+                              onPressed: _showPaymentHistory,
+                              child: const Text('Payment history'),
+                            ),
                           FilledButton.icon(
                             onPressed: billProvider.currentItemCount > 0 && !billProvider.isLoading
                                 ? () => _showCheckoutDialog(context) : null,
@@ -1301,7 +1307,7 @@ class _POSScreenState extends State<POSScreen> {
               children: [
                 Text('Total: ${AppUtils.formatCurrency(billProvider.currentTotal)}'),
                 const SizedBox(height: 16),
-                DropdownButton<String>(
+                if (ApiService.isLocal) DropdownButton<String>(
                   isExpanded: true,
                   value: paymentMethod,
                   items: const [
@@ -1313,6 +1319,8 @@ class _POSScreenState extends State<POSScreen> {
                     if (value != null) setDialogState(() => paymentMethod = value);
                   },
                 ),
+                if (!ApiService.isLocal)
+                  const Text('Cash checkout: payment method is not recorded by the server.'),
                 if (billProvider.error != null)
                   Text(billProvider.error!, style: const TextStyle(color: Colors.red)),
               ],
@@ -1324,6 +1332,14 @@ class _POSScreenState extends State<POSScreen> {
             onPressed: submitting ? null : () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
+          if (!ApiService.isLocal)
+            TextButton(
+              onPressed: submitting ? null : () {
+                Navigator.pop(context);
+                _showPaymentDialog();
+              },
+              child: const Text('UPI payment'),
+            ),
           ElevatedButton(
             onPressed: submitting ? null : () async {
               setDialogState(() => submitting = true);
@@ -1367,6 +1383,85 @@ class _POSScreenState extends State<POSScreen> {
           ),
         ],
       ),
+      ),
+    );
+  }
+
+  Future<void> _showPaymentDialog({String? draftId, bool resumeOnly = false}) async {
+    final bills = context.read<BillProvider>();
+    final targetDraftId = draftId ?? bills.currentBill?.id;
+    if (targetDraftId == null) return;
+    final products = context.read<ProductProvider>();
+    final customers = context.read<CustomerProvider>();
+    late final Map<String, dynamic> config;
+    try {
+      config = await ApiService.getPaymentProviderConfig();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment service unavailable: $error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (!resumeOnly && bills.currentBill?.id != targetDraftId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The current bill changed. Open payment again.')),
+      );
+      return;
+    }
+    final mode = config['mode'] as String;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => SandboxPaymentDialog(
+        draftId: targetDraftId,
+        taxPaise: resumeOnly ? 0 : (bills.currentTax * 100).round(),
+        resumeOnly: resumeOnly,
+        estimatedAmountPaise: resumeOnly
+            ? null
+            : (bills.currentSubtotal * 100).round() + (bills.currentTax * 100).round(),
+        mode: mode,
+        mobile: true,
+        preferredProvider: config['selected_provider'] as String,
+        client: ApiSandboxPaymentClient(mode: mode),
+        onCompleted: (_) async {
+          await bills.loadOpenBills();
+          await products.fetchProducts();
+          await customers.fetchCustomers();
+          if (bills.currentBill == null && bills.error == null) {
+            await bills.createNewBill(_guestCustomerId);
+          }
+          if (mounted) _syncSelectedCustomerFromCurrentBill(bills, customers);
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPaymentHistory() async {
+    late final Map<String, dynamic> config;
+    try {
+      config = await ApiService.getPaymentProviderConfig();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment service unavailable: $error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final mode = config['mode'] as String;
+    showDialog<void>(
+      context: context,
+      builder: (_) => SandboxPaymentHistoryDialog(
+        mode: mode,
+        client: ApiSandboxPaymentClient(mode: mode),
+        onOpenDraft: (payment) => _showPaymentDialog(
+          draftId: payment.draftId.toString(),
+          resumeOnly: true,
+        ),
       ),
     );
   }

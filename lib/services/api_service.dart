@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/models.dart';
+import '../models/sandbox_payment.dart';
 import 'local_users.dart';
 import 'local_stock.dart';
 import 'local_sales.dart';
@@ -617,6 +618,147 @@ class ApiService {
     }
 
     throw Exception(data['error']?.toString() ?? 'Draft checkout failed');
+  }
+
+  static Future<Map<String, dynamic>> getPaymentProviderConfig() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/billing/payments/providers'),
+      headers: _getHeaders(),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw SandboxPaymentException(
+        data['error']?.toString() ?? 'Payments are unavailable on this server',
+        statusCode: response.statusCode,
+      );
+    }
+    if (!const {'sandbox', 'live'}.contains(data['mode']) ||
+        data['providers'] is! List ||
+        data['selected_provider'] is! String) {
+      throw const FormatException('Invalid payment provider response');
+    }
+    final providers = <String>[];
+    for (final value in data['providers'] as List) {
+      if (value is! Map ||
+          value['name'] is! String ||
+          value['configured'] is! bool) {
+        throw const FormatException('Invalid payment provider response');
+      }
+      if (value['configured'] == true) providers.add(value['name'] as String);
+    }
+    return {
+      'mode': data['mode'],
+      'providers': providers,
+      'selected_provider': data['selected_provider'],
+    };
+  }
+
+  static Future<void> setPaymentProvider(String provider) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/billing/payments/settings'),
+      headers: _getHeaders(),
+      body: jsonEncode({'provider': provider}),
+    );
+    if (response.statusCode != 200) {
+      final data = _decodeBody(response.body);
+      throw Exception(data['error']?.toString() ?? 'Failed to save payment settings');
+    }
+  }
+
+  static Future<SandboxPayment?> getSandboxPaymentForDraft(String draftId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/billing/drafts/${Uri.encodeComponent(draftId)}/payment'),
+      headers: _getHeaders(),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 404 && data['error'] == 'Payment attempt not found') {
+      return null;
+    }
+    return _sandboxPaymentResponse(response, data);
+  }
+
+  static Future<List<SandboxPayment>> getSandboxPayments() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/billing/payments'),
+      headers: _getHeaders(),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw SandboxPaymentException(
+        data['error']?.toString() ?? 'Failed to load payments',
+        statusCode: response.statusCode,
+      );
+    }
+    if (data['payments'] is! List) {
+      throw const FormatException('Invalid payment list response');
+    }
+    return (data['payments'] as List).map((value) {
+      if (value is! Map) {
+        throw const FormatException('Invalid payment list response');
+      }
+      return SandboxPayment.fromJson(Map<String, dynamic>.from(value));
+    }).toList();
+  }
+
+  static Future<SandboxPayment> createSandboxPayment({
+    required String draftId,
+    required String provider,
+    required int taxPaise,
+    required String customerPhone,
+    required String os,
+    required String browser,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/drafts/${Uri.encodeComponent(draftId)}/payment'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'provider': provider,
+        'tax_paise': taxPaise,
+        'customer_phone': customerPhone,
+        'device': 'mobile',
+        'os': 'android',
+        'browser': 'others',
+        'rendering_type': 'native',
+      }),
+    );
+    return _sandboxPaymentResponse(response, _decodeBody(response.body));
+  }
+
+  static Future<SandboxPayment> checkSandboxPayment(String id) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/payments/${Uri.encodeComponent(id)}/check'),
+      headers: _getHeaders(),
+    );
+    return _sandboxPaymentResponse(response, _decodeBody(response.body));
+  }
+
+  static Future<SandboxPayment> recoverSandboxRazorpayPayment(
+      String id, String reference) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/payments/${Uri.encodeComponent(id)}/recover-razorpay'),
+      headers: _getHeaders(),
+      body: jsonEncode({'provider_reference': reference}),
+    );
+    return _sandboxPaymentResponse(response, _decodeBody(response.body));
+  }
+
+  static SandboxPayment _sandboxPaymentResponse(
+      http.Response response, Map<String, dynamic> data) {
+    final value = data['payment'];
+    final payment = value is Map
+        ? SandboxPayment.fromJson(Map<String, dynamic>.from(value))
+        : null;
+    if (response.statusCode != 200) {
+      throw SandboxPaymentException(
+        data['error']?.toString() ?? 'Payment request failed',
+        statusCode: response.statusCode,
+        payment: payment,
+      );
+    }
+    if (payment == null) {
+      throw const FormatException('Payment response is missing');
+    }
+    return payment;
   }
 
   static Future<BillItem> addItemToBill(

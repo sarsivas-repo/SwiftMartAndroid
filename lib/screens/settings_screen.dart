@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_settings_provider.dart';
 import '../services/api_service.dart';
 import '../utils/app_utils.dart';
+import '../widgets/payment_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -147,6 +148,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              if (!ApiService.isLocal) ...[
+                const PaymentSettings(),
+                const SizedBox(height: 14),
+              ],
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
