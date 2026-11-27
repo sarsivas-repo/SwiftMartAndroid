@@ -1,0 +1,1098 @@
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../models/models.dart';
+
+class ApiService {
+  static String _baseUrl = '';
+  static String? _authToken;
+
+  static void configureServer(String baseUrl) {
+    _authToken = null;
+    _baseUrl = baseUrl;
+  }
+
+  static Future<Map<String, dynamic>> login(String username, String password) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      _authToken = data['token'] as String?;
+      return data;
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Login failed');
+  }
+
+  static Future<void> logout() async {
+    _authToken = null;
+  }
+
+  static Future<Map<String, dynamic>> getMe() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/auth/me'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to get profile');
+  }
+
+  static Future<List<User>> getUsers() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/auth/users'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final users = (data['users'] as List<dynamic>? ?? []);
+      return users
+          .map((u) => User.fromJson(Map<String, dynamic>.from(u as Map)))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load users');
+  }
+
+  static Future<User> createUser(
+    String username,
+    String email,
+    String password,
+    List<UserRole> roles,
+  ) async {
+    if (roles.length != 1) {
+      throw ArgumentError('Exactly one role is required');
+    }
+    final role = roles.single.name;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/auth/users'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'username': username,
+        'email': email,
+        'password': password,
+        'role': role,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 201) {
+      return User.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to create user');
+  }
+
+  static Future<void> changeMyPassword(String currentPassword, String newPassword) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/auth/change-password'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to update password');
+    }
+  }
+
+  static Future<void> adminUpdateUserPassword(String userId, String newPassword) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/auth/users/$userId/password'),
+      headers: _getHeaders(),
+      body: jsonEncode({'new_password': newPassword}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to reset user password');
+    }
+  }
+
+  static Future<User> updateMyProfile({
+    required String email,
+    required String mobile,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/auth/me/profile'),
+      headers: _getHeaders(),
+      body: jsonEncode({'email': email, 'mobile': mobile}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return User.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to update profile');
+  }
+
+  static Future<User> updateUser(
+    String userId, {
+    required String username,
+    required String email,
+    required String mobile,
+    required List<UserRole> roles,
+    required bool isActive,
+  }) async {
+    if (roles.length != 1) {
+      throw ArgumentError('Exactly one role is required');
+    }
+    final role = roles.single.name;
+    final response = await http.put(
+      Uri.parse('$_baseUrl/auth/users/$userId'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'username': username,
+        'email': email,
+        'mobile': mobile,
+        'role': role,
+        'is_active': isActive,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return User.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to update user');
+  }
+
+  static Future<void> deleteUser(String userId, {bool hardDelete = false}) async {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/auth/users/$userId'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to delete user');
+    }
+  }
+
+  static Future<bool> shouldShowDefaultAdminHint() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/setup-status'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final data = _decodeBody(response.body);
+        return data['status'] == 'needs_setup';
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  static Future<List<Product>> getProducts() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/stock/products'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final items = (data['products'] as List<dynamic>? ?? []);
+      return items
+          .map((p) => Product.fromJson(_mapBackendProduct(Map<String, dynamic>.from(p as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load products');
+  }
+
+  static Future<Product> addProduct(
+    String name,
+    String sku,
+    String category,
+    double price,
+    int reorderLevel,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/stock/add'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'category': category,
+        'barcode': sku,
+        'price': price,
+        'quantity': 0,
+        'low_stock_threshold': reorderLevel,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 201) {
+      return Product.fromJson(_mapBackendProduct(Map<String, dynamic>.from(data['product'] as Map)));
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to add product');
+  }
+
+  static Future<Product> updateStock(String productId, int quantity) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/stock/update/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({'quantity': quantity, 'change_type': 'ADJUSTMENT'}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to update stock');
+    }
+
+    final products = await getProducts();
+    return products.firstWhere((p) => p.id == productId);
+  }
+
+  static Future<void> updateReorderLevel(String productId, int reorderLevel) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/stock/reorder/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({'low_stock_threshold': reorderLevel}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to update minimum stock level');
+    }
+  }
+
+  static Future<void> restockProduct(
+    String productId,
+    int quantity, {
+    String notes = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/stock/restock/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'quantity': quantity,
+        'notes': notes,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to restock product');
+    }
+  }
+
+  static Future<List<Product>> getLowStockAlerts() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/stock/alerts'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final alerts = (data['alerts'] as List<dynamic>? ?? []);
+      return alerts
+          .map((a) => Map<String, dynamic>.from(a as Map))
+          .map((a) => Product.fromJson(_mapBackendProduct(Map<String, dynamic>.from(a['product'] as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load low stock alerts');
+  }
+
+  static Future<List<StockLog>> getStockLogs({String? productId}) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/stock/logs'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final logs = (data['logs'] as List<dynamic>? ?? []);
+      return logs
+          .map((l) => StockLog.fromJson(_mapBackendStockLog(Map<String, dynamic>.from(l as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load stock logs');
+  }
+
+  static Future<Bill> createBill(String customerId) async {
+    return Bill(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      customerId: customerId,
+      subtotal: 0,
+      taxAmount: 0,
+      total: 0,
+      status: BillStatus.pending,
+      paymentMethod: 'cash',
+      createdAt: DateTime.now(),
+      items: const [],
+    );
+  }
+
+  static Future<List<Bill>> getDraftBills() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/billing/drafts'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final drafts = (data['drafts'] as List<dynamic>? ?? []);
+      return drafts
+          .map((d) => Bill.fromJson(_mapBackendDraftBill(Map<String, dynamic>.from(d as Map))))
+          .toList();
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to load draft bills');
+  }
+
+  static Future<Bill> createDraftBill(int? customerId) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/drafts'),
+      headers: _getHeaders(),
+      body: jsonEncode({'customer_id': customerId}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 201) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to create draft bill');
+  }
+
+  static Future<Bill> updateDraftBillCustomer(String draftId, int? customerId) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/customer'),
+      headers: _getHeaders(),
+      body: jsonEncode({'customer_id': customerId}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to update draft customer');
+  }
+
+  static Future<Bill> addItemToDraftBill(
+    String draftId,
+    String productId,
+    int quantity,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/items'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'product_id': int.tryParse(productId) ?? 0,
+        'quantity': quantity,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to add item to draft bill');
+  }
+
+  static Future<Bill> removeItemFromDraftBill(
+    String draftId,
+    String productId,
+  ) async {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to remove item from draft bill');
+  }
+
+  static Future<Bill> updateDraftItemQuantity(
+    String draftId,
+    String productId,
+    int quantity,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({'quantity': quantity}),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to update item quantity');
+  }
+
+  static Future<void> deleteDraftBill(String draftId) async {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to remove draft bill');
+    }
+  }
+
+  static Future<Map<String, dynamic>> checkoutDraftBill(
+    String draftId,
+    double taxAmount,
+    String paymentMethod,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/checkout'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'tax': taxAmount,
+        'payment_method': paymentMethod,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Draft checkout failed');
+  }
+
+  static Future<BillItem> addItemToBill(
+    String billId,
+    String productId,
+    int quantity,
+  ) async {
+    final products = await getProducts();
+    final product = products.firstWhere((p) => p.id == productId);
+
+    final validateResponse = await http.post(
+      Uri.parse('$_baseUrl/billing/add-item'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'product_id': int.tryParse(productId) ?? 0,
+        'quantity': quantity,
+        'price': product.price,
+      }),
+    );
+
+    final data = _decodeBody(validateResponse.body);
+    if (validateResponse.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to add item to bill');
+    }
+
+    return BillItem(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      billId: billId,
+      productId: product.id,
+      productName: product.name,
+      price: product.price,
+      quantity: quantity,
+      subtotal: product.price * quantity,
+    );
+  }
+
+  static Future<void> removeItemFromBill(String billId, String itemId) async {
+    return;
+  }
+
+  static Future<Bill> checkout(
+    Bill bill,
+    double taxAmount,
+    String paymentMethod,
+  ) async {
+    final customerID = int.tryParse(bill.customerId);
+    final subtotal = bill.items.fold<double>(0, (sum, item) => sum + item.subtotal);
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/checkout'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'customer_id': customerID,
+        'subtotal': subtotal,
+        'tax': taxAmount,
+        'items': bill.items
+            .map((item) => {
+                  'product_id': int.tryParse(item.productId) ?? 0,
+                  'quantity': item.quantity,
+                  'price': item.price,
+                })
+            .toList(),
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill(
+        id: data['bill_id']?.toString() ?? bill.id,
+        customerId: bill.customerId,
+        subtotal: subtotal,
+        taxAmount: taxAmount,
+        total: _asDouble(data['total']),
+        status: BillStatus.completed,
+        paymentMethod: paymentMethod,
+        createdAt: bill.createdAt,
+        items: bill.items,
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Checkout failed');
+  }
+
+  static Future<String> getReceipt(String billId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/billing/receipt/$billId'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return jsonEncode(data);
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to get receipt');
+  }
+
+  static Future<void> sendBillSms({
+    required String to,
+    required String message,
+    required String billId,
+    required String customerName,
+    required double total,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/notifications/sms'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'to': to,
+        'message': message,
+        'bill_id': billId,
+        'customer_name': customerName,
+        'total': total,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to send SMS');
+    }
+  }
+
+  static Future<void> sendBillEmail({
+    required String to,
+    required String subject,
+    required String message,
+    required String billId,
+    required String customerName,
+    required double total,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/notifications/email'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'to': to,
+        'subject': subject,
+        'message': message,
+        'bill_id': billId,
+        'customer_name': customerName,
+        'total': total,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to send email');
+    }
+  }
+
+  static Future<List<Bill>> getBills({DateTime? startDate, DateTime? endDate}) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/reports/bills'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final bills = (data['bills'] as List<dynamic>? ?? []);
+      return bills
+          .map((b) => Bill.fromJson(_mapBackendBill(Map<String, dynamic>.from(b as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load bills');
+  }
+
+  static Future<List<Customer>> getCustomers() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/customer/list'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final customers = (data['customers'] as List<dynamic>? ?? []);
+      return customers
+          .map((c) => Customer.fromJson(_mapBackendCustomer(Map<String, dynamic>.from(c as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load customers');
+  }
+
+  static Future<Customer> registerCustomer(
+    String name,
+    String email,
+    String phone,
+    String address,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/customer/register'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'email': email,
+        'phone': phone,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 201) {
+      return Customer.fromJson(
+        _mapBackendCustomer(Map<String, dynamic>.from(data['customer'] as Map))
+          ..['address'] = address,
+      );
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to register customer');
+  }
+
+  static Future<Customer> updateCustomer(
+    String customerId,
+    String name,
+    String email,
+    String phone,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/customer/update/$customerId'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'email': email,
+        'phone': phone,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Customer.fromJson(
+        _mapBackendCustomer(Map<String, dynamic>.from(data['customer'] as Map)),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to update customer');
+  }
+
+  static Future<List<Bill>> getCustomerHistory(String customerId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/customer/history/$customerId'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final history = (data['history'] as List<dynamic>? ?? []);
+      return history
+          .map((bill) => Bill.fromJson(_mapBackendBill(Map<String, dynamic>.from(bill as Map))))
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load customer history');
+  }
+
+  static Future<SalesReport> getDailySalesReport(DateTime date) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/reports/sales/daily?date=${date.toIso8601String().split('T')[0]}'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return SalesReport(
+        date: DateTime.tryParse(data['date']?.toString() ?? '') ?? date,
+        totalSales: _asDouble(data['total_sales']),
+        billCount: _asInt(data['total_bills']),
+        averageBillAmount: _asInt(data['total_bills']) > 0
+            ? _asDouble(data['total_sales']) / _asInt(data['total_bills'])
+            : 0,
+        taxCollected: 0,
+      );
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load daily sales report');
+  }
+
+  static Future<List<SalesReport>> getMonthlySalesReport(int year, int month) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/reports/sales/monthly?year=$year&month=$month'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final breakdown = (data['daily_breakdown'] as List<dynamic>? ?? []);
+      return breakdown
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .map(
+            (entry) => SalesReport(
+              date: DateTime.tryParse(entry['day']?.toString() ?? '') ?? DateTime(year, month, 1),
+              totalSales: _asDouble(entry['sales']),
+              billCount: _asInt(entry['bill_count']),
+              averageBillAmount: _asInt(entry['bill_count']) > 0
+                  ? _asDouble(entry['sales']) / _asInt(entry['bill_count'])
+                  : 0,
+              taxCollected: 0,
+            ),
+          )
+          .toList();
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load monthly sales report');
+  }
+
+  static Future<Map<String, dynamic>> getProfitLossReport(
+    int year,
+    int month,
+  ) async {
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/reports/financial/profit-loss?year=$year&month=$month',
+      ),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load profit/loss report');
+  }
+
+  static Future<Map<String, dynamic>> getInvestmentReturnReport(
+    int year,
+    int month,
+  ) async {
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/reports/financial/investment-return?year=$year&month=$month',
+      ),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load investment/return report');
+  }
+
+  static Future<Map<String, dynamic>> getManualFinanceEntry(int year, int month) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/reports/financial/manual-entry?year=$year&month=$month'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to load manual finance entry');
+  }
+
+  static Future<Map<String, dynamic>> saveManualFinanceEntry({
+    required int year,
+    required int month,
+    required double manualInvestment,
+    required double manualProfitAdjustment,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/reports/financial/manual-entry'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'year': year,
+        'month': month,
+        'manual_investment': manualInvestment,
+        'manual_profit_adjustment': manualProfitAdjustment,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to save manual finance entry');
+  }
+
+  static Future<Map<String, dynamic>> getNotificationProviderConfig() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/notifications/provider-config'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to load provider config');
+  }
+
+  static Future<void> updateNotificationProviderConfig({
+    required bool smsEnabled,
+    required bool emailEnabled,
+    required bool autoProductCodeEnabled,
+    required String twilioAccountSid,
+    required String twilioAuthToken,
+    required String twilioFromNumber,
+    required String smsDefaultCountryCode,
+    required String smtpHost,
+    required String smtpPort,
+    required String smtpUsername,
+    required String smtpPassword,
+    required String smtpFrom,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/notifications/provider-config'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'sms_enabled': smsEnabled,
+        'email_enabled': emailEnabled,
+        'auto_product_code_enabled': autoProductCodeEnabled,
+        'twilio_account_sid': twilioAccountSid,
+        'twilio_auth_token': twilioAuthToken,
+        'twilio_from_number': twilioFromNumber,
+        'sms_default_country_code': smsDefaultCountryCode,
+        'smtp_host': smtpHost,
+        'smtp_port': smtpPort,
+        'smtp_username': smtpUsername,
+        'smtp_password': smtpPassword,
+        'smtp_from': smtpFrom,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to save provider config');
+    }
+  }
+
+  static Future<List<MonthlySalary>> getMonthlySalaries({
+    required int year,
+    required int month,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/salary/monthly?year=$year&month=$month'),
+      headers: _getHeaders(),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      final salaries = (data['salaries'] as List<dynamic>? ?? []);
+      return salaries
+          .map((item) => MonthlySalary.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to load monthly salaries');
+  }
+
+  static Future<MonthlySalary> saveMonthlySalary({
+    required String userId,
+    required int year,
+    required int month,
+    required double basicSalary,
+    required double transportAllowance,
+    required double bonus,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/salary/monthly'),
+      headers: _getHeaders(),
+      body: jsonEncode({
+        'user_id': int.tryParse(userId) ?? 0,
+        'salary_year': year,
+        'salary_month': month,
+        'basic_salary': basicSalary,
+        'transport_allowance': transportAllowance,
+        'bonus': bonus,
+      }),
+    );
+
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return MonthlySalary.fromJson(
+        Map<String, dynamic>.from(data['salary'] as Map),
+      );
+    }
+
+    throw Exception(data['error']?.toString() ?? 'Failed to save monthly salary');
+  }
+
+  static Map<String, String> _getHeaders() {
+    Map<String, String> headers = {
+      'Content-Type': 'application/json',
+    };
+    if (_authToken != null) {
+      headers['Authorization'] = 'Bearer $_authToken';
+    }
+    return headers;
+  }
+
+  static void setAuthToken(String token) {
+    _authToken = token;
+  }
+
+  static String? getAuthToken() {
+    return _authToken;
+  }
+
+  static Map<String, dynamic> _decodeBody(String body) {
+    if (body.isEmpty) {
+      return <String, dynamic>{};
+    }
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return <String, dynamic>{'data': decoded};
+    } catch (_) {
+      // Some endpoints/proxies can return plain text for success/error.
+      return <String, dynamic>{'message': body};
+    }
+  }
+
+  static Map<String, dynamic> _mapBackendProduct(Map<String, dynamic> json) {
+    final reorderLevel = _asInt(
+      json['low_stock_threshold'] ??
+          json['reorder_level'] ??
+          json['reorderLevel'] ??
+          json['minimum_stock_level'] ??
+          json['min_qty'] ??
+          json['minQty'],
+    );
+
+    return {
+      'id': json['id']?.toString() ?? '',
+      'name': json['name'] ?? '',
+      'sku': (json['barcode'] ?? json['sku'] ?? '').toString(),
+      'category': json['category'] ?? '',
+      'price': _asDouble(json['price']),
+      'quantity': _asInt(json['quantity']),
+      'reorder_level': reorderLevel,
+      'created_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+  }
+
+  static Map<String, dynamic> _mapBackendCustomer(Map<String, dynamic> json) {
+    return {
+      'id': json['id']?.toString() ?? '',
+      'name': json['name'] ?? '',
+      'email': json['email'] ?? '',
+      'phone': json['phone'] ?? '',
+      'address': json['address'] ?? '',
+      'created_at': DateTime.now().toIso8601String(),
+      'total_spent': _asDouble(json['total_spent']),
+      'bill_count': _asInt(json['bill_count']),
+    };
+  }
+
+  static Map<String, dynamic> _mapBackendBill(Map<String, dynamic> json) {
+    return {
+      'id': json['id']?.toString() ?? '',
+      'customer_id': json['customer_id']?.toString() ?? '',
+      'subtotal': _asDouble(json['subtotal']),
+      'tax_amount': _asDouble(json['tax']),
+      'total': _asDouble(json['total']),
+      'status': 'completed',
+      'payment_method': 'cash',
+      'created_at': json['date']?.toString() ?? DateTime.now().toIso8601String(),
+      'items': const [],
+    };
+  }
+
+  static Map<String, dynamic> _mapBackendStockLog(Map<String, dynamic> json) {
+    final rawType = (json['change_type'] ?? 'manual').toString().toLowerCase();
+    final mappedType = (rawType == 'restock' || rawType == 'inbound') ? 'add' : rawType;
+
+    return {
+      'id': json['id']?.toString() ?? '',
+      'product_id': json['product_id']?.toString() ?? '',
+      'product_name': json['product_name']?.toString() ?? 'Product #${json['product_id']}',
+      'username': json['username']?.toString() ?? 'System',
+      'role': json['role']?.toString() ?? 'UNKNOWN',
+      'type': mappedType,
+      'quantity': _asInt(json['quantity_change']),
+      'notes': json['notes']?.toString() ?? '',
+      'created_at': json['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
+    };
+  }
+
+  static Map<String, dynamic> _mapBackendDraftBill(Map<String, dynamic> json) {
+    final customerId = json['customer_id'];
+    final items = (json['items'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .map(
+          (item) => {
+            'id': item['product_id']?.toString() ?? '',
+            'bill_id': json['id']?.toString() ?? '',
+            'product_id': item['product_id']?.toString() ?? '',
+            'product_name': item['product_name']?.toString() ?? '',
+            'price': _asDouble(item['price']),
+            'quantity': _asInt(item['quantity']),
+            'subtotal': _asDouble(item['subtotal']),
+          },
+        )
+        .toList();
+
+    final subtotal = _asDouble(json['subtotal']);
+    return {
+      'id': json['id']?.toString() ?? '',
+      'customer_id': customerId?.toString() ?? 'guest',
+      'subtotal': subtotal,
+      'tax_amount': 0,
+      'total': subtotal,
+      'status': 'pending',
+      'payment_method': 'cash',
+      'created_at': json['updated_at']?.toString() ?? json['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      'items': items,
+    };
+  }
+
+  static int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  static double _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+}
