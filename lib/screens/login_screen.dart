@@ -5,6 +5,7 @@ import '../providers/app_settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/server_settings.dart';
 import '../utils/constants.dart';
+import 'customer_shop_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -270,6 +271,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                   TextButton(
                                     onPressed: () => context.read<ServerSettings>().edit(),
                                     child: const Text('Change server'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const CustomerShopScreen(),
+                                      ),
+                                    ),
+                                    child: const Text('Shop as a customer'),
                                   ),
                                   const SizedBox(height: 16),
 

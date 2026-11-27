@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/server_settings.dart';
+import 'customer_shop_screen.dart';
 
 class ServerSetupScreen extends StatefulWidget {
   const ServerSetupScreen({super.key});
@@ -81,6 +82,16 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                 hintText: 'https://your-server.example',
                 errorText: _error ?? context.watch<ServerSettings>().error,
               ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () => Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const CustomerShopScreen(),
+                      )),
+              icon: const Icon(Icons.storefront_outlined),
+              label: const Text('Shop as a customer'),
             ),
             const SizedBox(height: 20),
             FilledButton(

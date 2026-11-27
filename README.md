@@ -26,6 +26,32 @@ The test preview covers **accounts, roles, stock, customers and sales**. It does
 not synchronize data; salary and reporting workflows are not available in
 standalone mode. Connected mode still uses the server.
 
+## Customer catalog and order requests
+
+The shop must enable the backend's opt-in customer catalog and tell customers
+the server address and WhatsApp contact. See the backend README for its
+configuration and network/security requirements. The existing native
+installers and older backend releases do not include this endpoint. An Android
+standalone shop cannot publish its local catalog through this feature.
+
+On the customer phone, tap **Shop as a customer**, connect to the shop network
+and enter the shop's server address once. A successful download saves the
+catalog on the phone without a staff login. Reopening the customer view tries
+to refresh it; if the shop server is unreachable, the previous catalog and
+cart remain available offline. The customer may search, add items, enter a
+name and delivery address, preview the message and choose WhatsApp and the
+shop's contact in the Android share sheet. Sending requires internet access.
+The name and address are included in the shared message but are not saved by
+the customer screen. The shop must confirm receipt: opening the share sheet
+does not prove an order was sent or accepted.
+
+Prices and stock are snapshots, and tax and delivery charges may be extra.
+The shop should confirm availability, delivery and the final amount before
+sharing its own UPI QR or payment details with the customer. Customers should
+verify the payee; sharing a QR or payment screenshot does not verify payment.
+This feature does not create bills, reserve stock, generate payment QR codes,
+or automatically confirm payment.
+
 Build the prototype with Flutter:
 
 ```sh
