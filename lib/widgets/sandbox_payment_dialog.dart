@@ -56,6 +56,7 @@ class ApiSandboxPaymentClient implements SandboxPaymentClient {
       ApiService.createSandboxPayment(
         draftId: draftId,
         provider: provider,
+        mode: mode,
         taxPaise: taxPaise,
         customerPhone: customerPhone,
         os: os,

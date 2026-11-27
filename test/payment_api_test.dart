@@ -11,6 +11,7 @@ void main() {
     final client = MockClient((request) async {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['device'], 'mobile');
+      expect(body['environment'], 'live');
       expect(body['os'], 'android');
       expect(body['rendering_type'], 'native');
       return http.Response(
@@ -23,6 +24,7 @@ void main() {
       final payment = await ApiService.createSandboxPayment(
         draftId: '1',
         provider: 'cashfree',
+        mode: 'live',
         taxPaise: 0,
         customerPhone: '9876543210',
         os: 'others',

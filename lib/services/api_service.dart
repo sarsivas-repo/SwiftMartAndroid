@@ -703,6 +703,7 @@ class ApiService {
   static Future<SandboxPayment> createSandboxPayment({
     required String draftId,
     required String provider,
+    required String mode,
     required int taxPaise,
     required String customerPhone,
     required String os,
@@ -713,6 +714,7 @@ class ApiService {
       headers: _getHeaders(),
       body: jsonEncode({
         'provider': provider,
+        'environment': mode,
         'tax_paise': taxPaise,
         'customer_phone': customerPhone,
         'device': 'mobile',
