@@ -5,6 +5,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystorePath = System.getenv("SWIFTMART_KEYSTORE")
+val passwordFile = System.getenv("SWIFTMART_KEY_PASSWORD_FILE")
+val releaseKeyAlias = System.getenv("SWIFTMART_KEY_ALIAS") ?: "swiftmart"
+val isRelease = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+if (isRelease) {
+    require(!keystorePath.isNullOrBlank() && !passwordFile.isNullOrBlank()) {
+        "Set SWIFTMART_KEYSTORE and SWIFTMART_KEY_PASSWORD_FILE for release signing."
+    }
+}
+
 android {
     namespace = "com.swiftmart.swiftmart_frontend"
     compileSdk = flutter.compileSdkVersion
@@ -30,6 +40,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank() && !passwordFile.isNullOrBlank()) {
+            create("swiftmartRelease") {
+                storeFile = file(keystorePath)
+                storePassword = file(passwordFile).readText().trim()
+                keyAlias = releaseKeyAlias
+                keyPassword = storePassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (isRelease) signingConfig = signingConfigs.getByName("swiftmartRelease")
+        }
+    }
 }
 
 flutter {

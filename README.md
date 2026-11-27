@@ -1,8 +1,12 @@
 # SwiftMart Android
 
 This project adapts the Flutter application from `SwiftMart-Frontend` for Android.
-It is a work in progress, not a release: standalone sales, inventory, customers,
-reports and release signing are not yet implemented, and there is no release APK.
+It is a work in progress, not a production release: standalone sales, inventory,
+customers and reports are not yet implemented.
+
+The signed [preview APK](release/SwiftMart-android-preview.apk) is for testing
+only. Verify it against [SHA256SUMS](release/SHA256SUMS). It has not been
+validated on a physical Android device.
 
 The current server-mode prototype asks for a SwiftMart server address before
 login. Use HTTPS whenever possible. HTTP requires explicit confirmation because
@@ -31,4 +35,13 @@ flutter build apk --debug
 ```
 
 The Android receipt action uses the system print dialog. No release signing
-credentials are stored in this repository.
+credentials are stored in this repository. To rebuild the signed preview, set
+`SWIFTMART_KEYSTORE` and `SWIFTMART_KEY_PASSWORD_FILE` to the external keystore
+and password file, and optionally `SWIFTMART_KEY_ALIAS` (default: `swiftmart`):
+
+```sh
+bash build-release.sh
+```
+
+Keep the keystore and password backed up securely: Android upgrades require the
+same signing key. Never commit either file.
