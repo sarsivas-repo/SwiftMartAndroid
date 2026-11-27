@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/models.dart';
 import 'local_users.dart';
+import 'local_stock.dart';
 
 class ApiService {
   static String _baseUrl = '';
@@ -223,6 +224,7 @@ class ApiService {
   }
 
   static Future<List<Product>> getProducts() async {
+    if (_localUsers case final local?) return LocalStock(local).products();
     final response = await http.get(
       Uri.parse('$_baseUrl/stock/products'),
       headers: _getHeaders(),
@@ -245,6 +247,9 @@ class ApiService {
     double price,
     int reorderLevel,
   ) async {
+    if (_localUsers case final local?) {
+      return LocalStock(local).add(name, sku, category, price, reorderLevel);
+    }
     final response = await http.post(
       Uri.parse('$_baseUrl/stock/add'),
       headers: _getHeaders(),
@@ -266,6 +271,7 @@ class ApiService {
   }
 
   static Future<Product> updateStock(String productId, int quantity) async {
+    if (_localUsers case final local?) return LocalStock(local).adjust(productId, quantity);
     final response = await http.put(
       Uri.parse('$_baseUrl/stock/update/$productId'),
       headers: _getHeaders(),
@@ -282,6 +288,7 @@ class ApiService {
   }
 
   static Future<void> updateReorderLevel(String productId, int reorderLevel) async {
+    if (_localUsers case final local?) return LocalStock(local).reorder(productId, reorderLevel);
     final response = await http.put(
       Uri.parse('$_baseUrl/stock/reorder/$productId'),
       headers: _getHeaders(),
@@ -299,6 +306,10 @@ class ApiService {
     int quantity, {
     String notes = '',
   }) async {
+    if (_localUsers case final local?) {
+      await LocalStock(local).adjust(productId, quantity, restock: true, notes: notes);
+      return;
+    }
     final response = await http.post(
       Uri.parse('$_baseUrl/stock/restock/$productId'),
       headers: _getHeaders(),
@@ -315,6 +326,7 @@ class ApiService {
   }
 
   static Future<List<Product>> getLowStockAlerts() async {
+    if (_localUsers case final local?) return LocalStock(local).products(lowStock: true);
     final response = await http.get(
       Uri.parse('$_baseUrl/stock/alerts'),
       headers: _getHeaders(),
@@ -332,6 +344,7 @@ class ApiService {
   }
 
   static Future<List<StockLog>> getStockLogs({String? productId}) async {
+    if (_localUsers case final local?) return LocalStock(local).logs(productId: productId);
     final response = await http.get(
       Uri.parse('$_baseUrl/stock/logs'),
       headers: _getHeaders(),

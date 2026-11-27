@@ -6,6 +6,7 @@ import '../services/server_settings.dart';
 import 'user_management_screen.dart';
 import 'login_screen.dart';
 import 'change_password_screen.dart';
+import 'stock_screen.dart';
 
 class LocalAccountScreen extends StatefulWidget {
   const LocalAccountScreen({super.key});
@@ -121,31 +122,44 @@ class _LocalHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Standalone test preview'),
-        actions: [
-          IconButton(
-            tooltip: 'Sign out',
-            onPressed: () => auth.logout(),
-            icon: const Icon(Icons.logout),
+    final tabs = <Tab>[
+      if (auth.isAdmin || auth.isManager) const Tab(text: 'Stock'),
+      if (auth.isAdmin) const Tab(text: 'Users'),
+    ];
+    final screens = <Widget>[
+      if (auth.isAdmin || auth.isManager) const StockScreen(),
+      if (auth.isAdmin) const UserManagementScreen(),
+    ];
+    return DefaultTabController(
+      length: tabs.length,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Standalone test preview'),
+          actions: [
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: () => auth.logout(),
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+          bottom: tabs.isEmpty ? null : TabBar(tabs: tabs),
+        ),
+        body: Column(children: [
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text(
+                'Test accounts and stock only. Sales, customers and reports are not implemented.'),
           ),
-        ],
+          Text(
+              '${auth.user?.username ?? ''} · ${auth.user?.roleSummary ?? ''}'),
+          Expanded(
+            child: screens.isEmpty
+                ? const Center(
+                    child: Text('Signed in with the selected test role.'))
+                : TabBarView(children: screens),
+          ),
+        ]),
       ),
-      body: Column(children: [
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text(
-              'Local user testing only. Sales, stock, customers and reports are not implemented.'),
-        ),
-        Text('${auth.user?.username ?? ''} · ${auth.user?.roleSummary ?? ''}'),
-        Expanded(
-          child: auth.isAdmin
-              ? const UserManagementScreen()
-              : const Center(
-                  child: Text('Signed in with the selected test role.')),
-        ),
-      ]),
     );
   }
 }

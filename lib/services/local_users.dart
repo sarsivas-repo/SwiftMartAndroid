@@ -90,6 +90,15 @@ class LocalUsers {
 
   Future<User> currentUser() async => _user(await _session(db));
 
+  Future<User> requireRoles(
+      DatabaseExecutor executor, Set<UserRole> roles) async {
+    final user = _user(await _session(executor));
+    if (!roles.contains(user.role)) {
+      throw StateError('Permission denied for ${user.role.name}.');
+    }
+    return user;
+  }
+
   Future<User> updateProfile(
       {required String email, required String mobile}) async {
     return db.transaction((tx) async {

@@ -88,7 +88,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                 child: const Text('Continue')),
             const Divider(height: 40),
             const Text(
-              'Standalone test preview: local accounts and role management only. Sales, stock, customers and reports are not yet available.',
+              'Standalone test preview: local accounts and stock. Sales, customers and reports are not yet available.',
             ),
             const SizedBox(height: 12),
             OutlinedButton(
