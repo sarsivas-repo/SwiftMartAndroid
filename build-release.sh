@@ -6,9 +6,27 @@ set -euo pipefail
 test -r "$SWIFTMART_KEYSTORE"
 test -r "$SWIFTMART_KEY_PASSWORD_FILE"
 cd "$(dirname "$0")"
+if [[ -f ../SwiftMart-Backend/licensing/public-key.txt ]]; then
+  cmp ../SwiftMart-Backend/licensing/public-key.txt assets/license-public-key.txt
+fi
 flutter test
-flutter build apk --release
+version=$(sed -nE 's/^version: ([0-9]+\.[0-9]+\.[0-9]+)\+[0-9]+$/\1/p' pubspec.yaml)
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid pubspec release version" >&2; exit 1; }
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+flutter build apk --release --dart-define=SWIFTMART_LICENSED=true --dart-define="SWIFTMART_VERSION=$version"
+install -m 0644 build/app/outputs/flutter-apk/app-release.apk "$work/SwiftMart-$version-android.apk"
 mkdir -p release
-install -m 0644 build/app/outputs/flutter-apk/app-release.apk release/SwiftMart-android-preview.apk
-(cd release && sha256sum SwiftMart-android-preview.apk > SHA256SUMS)
-echo "Preview APK: release/SwiftMart-android-preview.apk"
+for previous in release/SwiftMart-*.apk; do
+  [[ -f "$previous" ]] && rm -- "$previous"
+done
+install -m 0644 "$work/SwiftMart-$version-android.apk" release/
+{
+  printf 'SwiftMart %s\nPublisher: Saravanakumar\n' "$version"
+  printf 'Website: https://github.com/sarsivas-repo/SwiftMartAndroid\n'
+  printf 'Licensing: one 30-day installation trial; reusable signed duration extensions. Updates do not reset the trial.\n'
+  printf 'Source commit: %s\n' "$(git rev-parse HEAD)"
+  printf 'Built at: %s\n' "$(date -u +%FT%TZ)"
+} > release/BUILD-INFO.txt
+(cd release && sha256sum "SwiftMart-$version-android.apk" > SHA256SUMS)
+echo "Licensed APK: release/SwiftMart-$version-android.apk"

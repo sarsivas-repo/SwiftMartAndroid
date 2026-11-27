@@ -14,9 +14,13 @@ import 'screens/home_screen.dart';
 import 'screens/server_setup_screen.dart';
 import 'screens/local_account_screen.dart';
 import 'services/server_settings.dart';
+import 'services/app_license.dart';
 import 'utils/constants.dart';
+import 'widgets/app_edition_gate.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppLicense.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -47,6 +51,10 @@ class MyApp extends StatelessWidget {
 
               return MaterialApp(
                 title: effectiveTitle,
+                builder: (context, child) => AppEditionGate(
+                  license: AppLicense.instance,
+                  child: child!,
+                ),
                 onGenerateTitle: (_) => effectiveTitle,
                 locale: settingsProvider.appLocale,
                 supportedLocales: const [

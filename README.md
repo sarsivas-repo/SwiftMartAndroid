@@ -4,9 +4,37 @@ This project adapts the Flutter application from `SwiftMart-Frontend` for Androi
 It is a work in progress, not a production release: standalone salary and
 reports are not yet implemented.
 
-The signed [preview APK](release/SwiftMart-android-preview.apk) is for testing
-only. Verify it against [SHA256SUMS](release/SHA256SUMS). It has not been
+Each release provides one signed [APK](release/SwiftMart-1.0.8-android.apk). Publisher:
+**Saravanakumar**. Verify them against [SHA256SUMS](release/SHA256SUMS); publishing
+details are in [BUILD-INFO.txt](release/BUILD-INFO.txt). They have not been
 validated on a physical Android device.
+
+## Trial and renewable licenses
+
+Each installation works for **30 x 24 hours from first app launch**, including
+offline/standalone, server and customer modes. Updates/reinstalls without clearing
+data preserve the original expiry; new versions do not give another trial.
+At expiry, login and application screens are blocked; existing standalone
+sessions and API operations are checked too. The screen refreshes every 30
+seconds and when returning to the app. Clock rollback beyond five minutes and
+invalid/unwritable state block access. Stored business data is retained.
+
+Open **License settings** in the top banner to see the exact UTC expiry and
+remaining days, and paste a paid extension code from Saravanakumar. The activation
+form remains available after expiry without login. Paid codes have fixed UTC
+expiries, use Ed25519 signatures, and are reusable across Windows/Linux/Android
+devices. Reapplying a code does not add more days. Publisher scripts in
+`SwiftMart-Infra/native/LICENSING.md` generate days/calendar-year extensions.
+
+Updates keep the existing application ID and release signing key, preserving
+standalone accounts, stock and bills. **Do not uninstall or clear app data
+when upgrading**. Android rejects downgrades to older version codes. This is
+offline trial enforcement, not tamper-proof licensing: clearing application
+data, uninstalling or modifying/rebuilding the app can reset/bypass local trial
+state. Strong enforcement requires online activation and controlled distribution.
+A licensed client still cannot use an expired backend; activate there too.
+Android signing confirms package identity, not Windows-style
+public publisher verification.
 
 The current server-mode prototype asks for a SwiftMart server address before
 login. Use HTTPS whenever possible. HTTP requires explicit confirmation because
@@ -76,13 +104,23 @@ flutter build apk --debug
 ```
 
 The Android receipt action uses the system print dialog. No release signing
-credentials are stored in this repository. To rebuild the signed preview, set
+credentials are stored in this repository. To rebuild the signed licensed APK, set
 `SWIFTMART_KEYSTORE` and `SWIFTMART_KEY_PASSWORD_FILE` to the external keystore
 and password file, and optionally `SWIFTMART_KEY_ALIAS` (default: `swiftmart`):
 
 ```sh
 bash build-release.sh
 ```
+
+The script tests once and builds with `SWIFTMART_LICENSED=true` and the release
+version from `pubspec.yaml`. It embeds only the publisher's verification key
+from `assets/license-public-key.txt`, never its private signing key. Increment
+both `version` and Android build number for a new release. Publish only the
+latest APK, checksums and publishing information; older builds stay in Git
+history. Keep the same APK signing key and application ID.
+For manual licensed builds, pass `--dart-define=SWIFTMART_LICENSED=true` and
+`--dart-define=SWIFTMART_VERSION=1.0.8` (matching `--build-name`).
+Normal debug/source builds retain unrestricted development behavior.
 
 Keep the keystore and password backed up securely: Android upgrades require the
 same signing key. Never commit either file.

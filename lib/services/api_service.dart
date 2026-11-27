@@ -4,6 +4,7 @@ import '../models/models.dart';
 import 'local_users.dart';
 import 'local_stock.dart';
 import 'local_sales.dart';
+import 'app_license.dart';
 
 class ApiService {
   static String _baseUrl = '';
@@ -25,6 +26,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> login(String username, String password) async {
+    AppLicense.instance.requireActive();
     if (_localUsers case final local?) {
       final user = await local.login(username, password);
       return {'user': user.toJson()};
@@ -37,6 +39,7 @@ class ApiService {
 
     final data = _decodeBody(response.body);
     if (response.statusCode == 200) {
+      AppLicense.instance.requireActive();
       _authToken = data['token'] as String?;
       return data;
     }
@@ -1104,6 +1107,7 @@ class ApiService {
   }
 
   static Map<String, String> _getHeaders() {
+    AppLicense.instance.requireActive();
     Map<String, String> headers = {
       'Content-Type': 'application/json',
     };

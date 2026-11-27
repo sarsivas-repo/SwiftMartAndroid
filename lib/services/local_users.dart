@@ -5,6 +5,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
+import 'app_license.dart';
 
 /// Persistent, device-local test accounts. This is not a server identity store.
 class LocalUsers {
@@ -12,8 +13,10 @@ class LocalUsers {
   final _kdf =
       Pbkdf2(macAlgorithm: Hmac.sha256(), iterations: 210000, bits: 256);
   int? _sessionUserId;
+  final AppLicense license;
 
-  LocalUsers(this.db);
+  LocalUsers(this.db, {AppLicense? license})
+      : license = license ?? AppLicense.instance;
 
   static Future<void> createSchema(DatabaseExecutor db) async {
     await db.execute('''
@@ -39,6 +42,7 @@ class LocalUsers {
   }
 
   Future<void> setupAdmin(String username, String password) async {
+    license.requireActive();
     final values =
         await _newUser(username, '', password, UserRole.admin, false);
     await db.transaction((tx) async {
@@ -52,6 +56,7 @@ class LocalUsers {
   }
 
   Future<User> login(String username, String password) async {
+    license.requireActive();
     _sessionUserId = null;
     final rows = await db.query('local_users',
         where: 'username = ? COLLATE NOCASE',
@@ -62,6 +67,7 @@ class LocalUsers {
         !await _verifyPassword(password, rows.single)) {
       throw StateError('Invalid username or password, or account is inactive.');
     }
+    license.requireActive();
     _sessionUserId = rows.single['id'] as int;
     return _user(rows.single);
   }
@@ -70,6 +76,7 @@ class LocalUsers {
 
   Future<Map<String, Object?>> _session(DatabaseExecutor executor,
       {bool admin = false}) async {
+    license.requireActive();
     final id = _sessionUserId;
     if (id == null) throw StateError('Please sign in.');
     final rows = await executor.query('local_users',
