@@ -1166,9 +1166,13 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   void _showCheckoutDialog(BuildContext context) {
+    var paymentMethod = 'cash';
+    var submitting = false;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
         title: const Text('Checkout'),
         content: Consumer<BillProvider>(
           builder: (context, billProvider, _) {
@@ -1179,65 +1183,70 @@ class _POSScreenState extends State<POSScreen> {
                 const SizedBox(height: 16),
                 DropdownButton<String>(
                   isExpanded: true,
-                  value: 'cash',
+                  value: paymentMethod,
                   items: const [
                     DropdownMenuItem(value: 'cash', child: Text('Cash')),
                     DropdownMenuItem(value: 'card', child: Text('Card')),
                     DropdownMenuItem(value: 'mobile', child: Text('Mobile')),
                   ],
-                  onChanged: (value) {},
+                  onChanged: submitting ? null : (value) {
+                    if (value != null) setDialogState(() => paymentMethod = value);
+                  },
                 ),
+                if (billProvider.error != null)
+                  Text(billProvider.error!, style: const TextStyle(color: Colors.red)),
               ],
             );
           },
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: submitting ? null : () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: submitting ? null : () async {
+              setDialogState(() => submitting = true);
               final billProvider = context.read<BillProvider>();
               final customerProvider = context.read<CustomerProvider>();
+              final productProvider = context.read<ProductProvider>();
               final billBeforeCheckout = billProvider.currentBill;
-              final billSnapshot = billBeforeCheckout == null
+              final customerSnapshot = billBeforeCheckout == null ||
+                      billBeforeCheckout.customerId == _guestCustomerId ||
+                      billBeforeCheckout.customerId.trim().isEmpty
                   ? null
-                  : billBeforeCheckout.copyWith(
-                      items: List<BillItem>.from(billBeforeCheckout.items),
-                    );
-              final customerSnapshot = billSnapshot == null ||
-                      billSnapshot.customerId == _guestCustomerId ||
-                      billSnapshot.customerId.trim().isEmpty
-                  ? null
-                  : customerProvider.getCustomerById(billSnapshot.customerId);
+                  : customerProvider.getCustomerById(billBeforeCheckout.customerId);
               final success = await billProvider.checkout(
                 billProvider.currentTotal,
-                'cash',
+                paymentMethod,
               );
 
               if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                ScaffoldMessenger.of(this.context).showSnackBar(
                   const SnackBar(content: Text('Checkout successful')),
                 );
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
 
-                if (billSnapshot != null) {
-                  _showReceiptDialog(billSnapshot, customerSnapshot);
-                }
+                _showReceiptDialog(billProvider.bills.first, customerSnapshot);
+                productProvider.fetchProducts();
+                customerProvider.fetchCustomers();
 
                 if (billProvider.currentBill == null) {
                   await billProvider.createNewBill(_guestCustomerId);
                 }
+                if (!mounted) return;
                 _syncSelectedCustomerFromCurrentBill(
                   billProvider,
-                  context.read<CustomerProvider>(),
+                  customerProvider,
                 );
+              } else if (mounted && context.mounted) {
+                setDialogState(() => submitting = false);
               }
             },
             child: const Text('Complete'),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1249,13 +1258,15 @@ class _POSScreenState extends State<POSScreen> {
 
     bool smsProviderEnabled = false;
     bool emailProviderEnabled = false;
-    try {
-      final providerConfig = await ApiService.getNotificationProviderConfig();
-      smsProviderEnabled = providerConfig['sms_enabled'] == true;
-      emailProviderEnabled = providerConfig['email_enabled'] == true;
-    } catch (_) {
-      smsProviderEnabled = false;
-      emailProviderEnabled = false;
+    if (!ApiService.isLocal) {
+      try {
+        final providerConfig = await ApiService.getNotificationProviderConfig();
+        smsProviderEnabled = providerConfig['sms_enabled'] == true;
+        emailProviderEnabled = providerConfig['email_enabled'] == true;
+      } catch (_) {
+        smsProviderEnabled = false;
+        emailProviderEnabled = false;
+      }
     }
 
     final customerName = customer?.name.trim().isNotEmpty == true
@@ -1347,7 +1358,9 @@ class _POSScreenState extends State<POSScreen> {
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('Send SMS to customer'),
                     subtitle: Text(
-                      !smsProviderEnabled
+                      ApiService.isLocal
+                          ? 'SMS is unavailable in standalone mode'
+                          : !smsProviderEnabled
                           ? 'SMS provider disabled in Settings'
                           : (hasPhone ? customerPhone : 'No mobile number available'),
                     ),
@@ -1364,7 +1377,9 @@ class _POSScreenState extends State<POSScreen> {
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('Send Email to customer'),
                     subtitle: Text(
-                      !emailProviderEnabled
+                      ApiService.isLocal
+                          ? 'Email is unavailable in standalone mode'
+                          : !emailProviderEnabled
                           ? 'Email provider disabled in Settings'
                           : (hasEmail ? customerEmail : 'No email available'),
                     ),

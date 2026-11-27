@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/bill_provider.dart';
+import '../providers/customer_provider.dart';
+import '../providers/product_provider.dart';
 import '../services/server_settings.dart';
 import 'user_management_screen.dart';
 import 'login_screen.dart';
 import 'change_password_screen.dart';
 import 'stock_screen.dart';
+import 'pos_screen.dart';
+import 'customers_screen.dart';
 
 class LocalAccountScreen extends StatefulWidget {
   const LocalAccountScreen({super.key});
@@ -78,7 +83,14 @@ class _LocalAccountScreenState extends State<LocalAccountScreen> {
             if (!auth.isLoggedIn) return const LoginScreen();
             if (auth.shouldPromptPasswordChange)
               return const ChangePasswordScreen();
-            return const _LocalHome();
+            return MultiProvider(
+              providers: [
+                ChangeNotifierProvider(create: (_) => BillProvider()),
+                ChangeNotifierProvider(create: (_) => ProductProvider()),
+                ChangeNotifierProvider(create: (_) => CustomerProvider()),
+              ],
+              child: const _LocalHome(),
+            );
           }
           return Scaffold(
             appBar: AppBar(title: const Text('Standalone test setup')),
@@ -116,18 +128,40 @@ class _LocalAccountScreenState extends State<LocalAccountScreen> {
       );
 }
 
-class _LocalHome extends StatelessWidget {
+class _LocalHome extends StatefulWidget {
   const _LocalHome();
+
+  @override
+  State<_LocalHome> createState() => _LocalHomeState();
+}
+
+class _LocalHomeState extends State<_LocalHome> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.isAdmin || auth.isCashier) {
+        context.read<ProductProvider>().fetchProducts();
+        context.read<CustomerProvider>().fetchCustomers();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final tabs = <Tab>[
+      if (auth.isAdmin || auth.isCashier) const Tab(text: 'Sales'),
       if (auth.isAdmin || auth.isManager) const Tab(text: 'Stock'),
+      if (auth.isAdmin) const Tab(text: 'Customers'),
       if (auth.isAdmin) const Tab(text: 'Users'),
     ];
     final screens = <Widget>[
+      if (auth.isAdmin || auth.isCashier) const POSScreen(),
       if (auth.isAdmin || auth.isManager) const StockScreen(),
+      if (auth.isAdmin) const CustomersScreen(),
       if (auth.isAdmin) const UserManagementScreen(),
     ];
     return DefaultTabController(
@@ -142,13 +176,18 @@ class _LocalHome extends StatelessWidget {
               icon: const Icon(Icons.logout),
             ),
           ],
-          bottom: tabs.isEmpty ? null : TabBar(tabs: tabs),
+          bottom: tabs.isEmpty
+              ? null
+              : TabBar(
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  tabs: tabs),
         ),
         body: Column(children: [
           const Padding(
             padding: EdgeInsets.all(12),
             child: Text(
-                'Test accounts and stock only. Sales, customers and reports are not implemented.'),
+                'Standalone test data stays on this phone. Salary and reports are not implemented.'),
           ),
           Text(
               '${auth.user?.username ?? ''} · ${auth.user?.roleSummary ?? ''}'),

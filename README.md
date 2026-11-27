@@ -1,8 +1,8 @@
 # SwiftMart Android
 
 This project adapts the Flutter application from `SwiftMart-Frontend` for Android.
-It is a work in progress, not a production release: standalone sales,
-customers and reports are not yet implemented.
+It is a work in progress, not a production release: standalone salary and
+reports are not yet implemented.
 
 The signed [preview APK](release/SwiftMart-android-preview.apk) is for testing
 only. Verify it against [SHA256SUMS](release/SHA256SUMS). It has not been
@@ -22,9 +22,9 @@ user management is checked against the local account. There is one role per
 user, matching the backend. Passwords are salted and hashed; no default test
 password is bundled. Removing the app removes its local data.
 
-The test preview currently covers **accounts, roles and stock**. It does not
-synchronize data, and no sales, customer, salary or reporting workflows
-are available in standalone mode. Connected mode still uses the server.
+The test preview covers **accounts, roles, stock, customers and sales**. It does
+not synchronize data; salary and reporting workflows are not available in
+standalone mode. Connected mode still uses the server.
 
 Build the prototype with Flutter:
 

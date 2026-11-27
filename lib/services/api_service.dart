@@ -3,11 +3,13 @@ import 'dart:convert';
 import '../models/models.dart';
 import 'local_users.dart';
 import 'local_stock.dart';
+import 'local_sales.dart';
 
 class ApiService {
   static String _baseUrl = '';
   static String? _authToken;
   static LocalUsers? _localUsers;
+  static bool get isLocal => _localUsers != null;
 
   static void configureServer(String baseUrl) {
     _localUsers?.logout();
@@ -375,6 +377,7 @@ class ApiService {
   }
 
   static Future<List<Bill>> getDraftBills() async {
+    if (_localUsers case final local?) return LocalSales(local).drafts();
     final response = await http.get(
       Uri.parse('$_baseUrl/billing/drafts'),
       headers: _getHeaders(),
@@ -392,6 +395,7 @@ class ApiService {
   }
 
   static Future<Bill> createDraftBill(int? customerId) async {
+    if (_localUsers case final local?) return LocalSales(local).createDraft(customerId);
     final response = await http.post(
       Uri.parse('$_baseUrl/billing/drafts'),
       headers: _getHeaders(),
@@ -409,6 +413,7 @@ class ApiService {
   }
 
   static Future<Bill> updateDraftBillCustomer(String draftId, int? customerId) async {
+    if (_localUsers case final local?) return LocalSales(local).setCustomer(draftId, customerId);
     final response = await http.put(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/customer'),
       headers: _getHeaders(),
@@ -430,6 +435,7 @@ class ApiService {
     String productId,
     int quantity,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).setItem(draftId, productId, quantity, add: true);
     final response = await http.post(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/items'),
       headers: _getHeaders(),
@@ -453,6 +459,7 @@ class ApiService {
     String draftId,
     String productId,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).removeItem(draftId, productId);
     final response = await http.delete(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
       headers: _getHeaders(),
@@ -473,6 +480,7 @@ class ApiService {
     String productId,
     int quantity,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).setItem(draftId, productId, quantity);
     final response = await http.put(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
       headers: _getHeaders(),
@@ -490,6 +498,7 @@ class ApiService {
   }
 
   static Future<void> deleteDraftBill(String draftId) async {
+    if (_localUsers case final local?) return LocalSales(local).deleteDraft(draftId);
     final response = await http.delete(
       Uri.parse('$_baseUrl/billing/drafts/$draftId'),
       headers: _getHeaders(),
@@ -506,6 +515,7 @@ class ApiService {
     double taxAmount,
     String paymentMethod,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).checkout(draftId, taxAmount, paymentMethod);
     final response = await http.post(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/checkout'),
       headers: _getHeaders(),
@@ -686,6 +696,7 @@ class ApiService {
   }
 
   static Future<List<Customer>> getCustomers() async {
+    if (_localUsers case final local?) return LocalSales(local).customers();
     final response = await http.get(
       Uri.parse('$_baseUrl/customer/list'),
       headers: _getHeaders(),
@@ -707,6 +718,7 @@ class ApiService {
     String phone,
     String address,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).registerCustomer(name, email, phone, address);
     final response = await http.post(
       Uri.parse('$_baseUrl/customer/register'),
       headers: _getHeaders(),
@@ -733,6 +745,7 @@ class ApiService {
     String email,
     String phone,
   ) async {
+    if (_localUsers case final local?) return LocalSales(local).updateCustomer(customerId, name, email, phone);
     final response = await http.put(
       Uri.parse('$_baseUrl/customer/update/$customerId'),
       headers: _getHeaders(),
@@ -754,6 +767,7 @@ class ApiService {
   }
 
   static Future<List<Bill>> getCustomerHistory(String customerId) async {
+    if (_localUsers case final local?) return LocalSales(local).customerHistory(customerId);
     final response = await http.get(
       Uri.parse('$_baseUrl/customer/history/$customerId'),
       headers: _getHeaders(),

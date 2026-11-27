@@ -51,6 +51,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   if (customerProvider.isLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
+                  if (customerProvider.error != null) {
+                    return Center(child: Text(customerProvider.error!));
+                  }
 
                   if (customerProvider.filteredCustomers.isEmpty) {
                     return const Center(child: Text('No customers found'));
@@ -110,6 +113,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       padding: EdgeInsets.all(8.0),
                       child: CircularProgressIndicator(),
                     );
+                  }
+                  if (customerProvider.error != null) {
+                    return Text(customerProvider.error!);
                   }
 
                   if (customerProvider.customerHistory.isEmpty) {
@@ -181,6 +187,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
               TextField(
                 controller: addressController,
                 decoration: const InputDecoration(labelText: 'Address'),
+              ),
+              Consumer<CustomerProvider>(
+                builder: (_, provider, __) => provider.error == null
+                    ? const SizedBox.shrink()
+                    : Text(provider.error!, style: const TextStyle(color: Colors.red)),
               ),
             ],
           ),

@@ -414,11 +414,13 @@ class _StockScreenState extends State<StockScreen> with TickerProviderStateMixin
     final productProvider = context.read<ProductProvider>();
 
     var isAutoCodeEnabled = settings.autoProductCodeEnabled;
-    try {
-      final providerConfig = await ApiService.getNotificationProviderConfig();
-      isAutoCodeEnabled = providerConfig['auto_product_code_enabled'] == true;
-    } catch (_) {
-      // Fall back to locally cached setting when backend config is temporarily unavailable.
+    if (!ApiService.isLocal) {
+      try {
+        final providerConfig = await ApiService.getNotificationProviderConfig();
+        isAutoCodeEnabled = providerConfig['auto_product_code_enabled'] == true;
+      } catch (_) {
+        // Fall back to locally cached setting when backend config is temporarily unavailable.
+      }
     }
 
     final generatedSku = _generateNextProductCode(productProvider.products);
