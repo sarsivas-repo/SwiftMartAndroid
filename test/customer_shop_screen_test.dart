@@ -79,6 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Example Shop'), findsOneWidget);
     expect(find.text('Rice'), findsOneWidget);
+    expect(find.textContaining('INR 12.35'), findsOneWidget);
     expect(find.textContaining('saved catalog is unchanged'), findsOneWidget);
     await tester.tap(find.byTooltip('Add one'));
     await tester.pumpAndSettle();
@@ -97,6 +98,7 @@ void main() {
     await tester.tap(find.text('Share'));
     await tester.pumpAndSettle();
     expect(shared, contains('Rice × 1'));
+    expect(shared, contains('INR 12.35'));
     expect(shared, contains('Delivery address: Example address'));
     expect(shared, contains('Please confirm availability'));
     expect(shared, contains('tax and delivery extra'));

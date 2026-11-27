@@ -30,8 +30,8 @@ standalone mode. Connected mode still uses the server.
 
 The shop must enable the backend's opt-in customer catalog and tell customers
 the server address and WhatsApp contact. See the backend README for its
-configuration and network/security requirements. The existing native
-installers and older backend releases do not include this endpoint. An Android
+configuration and network/security requirements. Native installers before
+version 1.0.3 and older backend releases do not include this endpoint. An Android
 standalone shop cannot publish its local catalog through this feature.
 
 On the customer phone, tap **Shop as a customer**, connect to the shop network

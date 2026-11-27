@@ -6,7 +6,7 @@ import '../services/customer_catalog.dart';
 import '../services/server_settings.dart';
 
 String _money(int paise) =>
-    '₹${paise ~/ 100}.${(paise % 100).toString().padLeft(2, '0')}';
+    'INR ${paise ~/ 100}.${(paise % 100).toString().padLeft(2, '0')}';
 
 class CustomerShopScreen extends StatefulWidget {
   const CustomerShopScreen({super.key, this.store, this.client});
