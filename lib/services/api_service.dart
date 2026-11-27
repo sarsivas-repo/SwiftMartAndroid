@@ -935,6 +935,18 @@ class ApiService {
     throw Exception(data['error']?.toString() ?? 'Failed to save manual finance entry');
   }
 
+  static Future<Map<String, dynamic>> getNotificationAvailability() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/notifications/availability'),
+      headers: _getHeaders(),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(data['error']?.toString() ?? 'Failed to load notification availability');
+    }
+    return data;
+  }
+
   static Future<Map<String, dynamic>> getNotificationProviderConfig() async {
     final response = await http.get(
       Uri.parse('$_baseUrl/notifications/provider-config'),

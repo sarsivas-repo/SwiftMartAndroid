@@ -656,13 +656,22 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                   child: Column(
                     children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: billProvider.isLoading ? null : _showDirectSaleDialog,
-                          icon: const Icon(Icons.add_shopping_cart),
-                          label: const Text('Sell without stock'),
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: billProvider.isLoading ? null : _showDirectSaleDialog,
+                            icon: const Icon(Icons.add_shopping_cart),
+                            label: const Text('Sell without stock'),
+                          ),
+                          FilledButton.icon(
+                            onPressed: billProvider.currentItemCount > 0 && !billProvider.isLoading
+                                ? () => _showCheckoutDialog(context) : null,
+                            icon: const Icon(Icons.shopping_cart_checkout),
+                            label: const Text('Checkout'),
+                          ),
+                        ],
                       ),
                       _TotalRow(
                         label: 'Subtotal',
@@ -1334,19 +1343,26 @@ class _POSScreenState extends State<POSScreen> {
     final receiptHtml = _buildReceiptHtml(bill, customer);
     bool sendSms = false;
     bool sendEmail = false;
+    bool sending = false;
+    bool smsAttempted = false;
+    bool emailAttempted = false;
+    String? smsStatus;
+    String? emailStatus;
+    String? availabilityError;
 
     bool smsProviderEnabled = false;
     bool emailProviderEnabled = false;
     if (!ApiService.isLocal) {
       try {
-        final providerConfig = await ApiService.getNotificationProviderConfig();
+        final providerConfig = await ApiService.getNotificationAvailability()
+            .timeout(const Duration(seconds: 8));
         smsProviderEnabled = providerConfig['sms_enabled'] == true;
         emailProviderEnabled = providerConfig['email_enabled'] == true;
-      } catch (_) {
-        smsProviderEnabled = false;
-        emailProviderEnabled = false;
+      } catch (e) {
+        availabilityError = 'Could not load notification availability: $e';
       }
     }
+    if (!mounted) return;
 
     final customerName = customer?.name.trim().isNotEmpty == true
         ? customer!.name
@@ -1367,8 +1383,11 @@ class _POSScreenState extends State<POSScreen> {
 
     await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
+        builder: (dialogContext, setDialogState) => PopScope(
+          canPop: !sending,
+          child: AlertDialog(
           title: const Text('Receipt Preview'),
           content: SizedBox(
             width: 460,
@@ -1431,6 +1450,10 @@ class _POSScreenState extends State<POSScreen> {
                     ],
                   ),
                   const Divider(height: 20),
+                  if (availabilityError != null)
+                    Text(availabilityError!, style: const TextStyle(color: Colors.red)),
+                  if (smsStatus != null) Text(smsStatus!),
+                  if (emailStatus != null) Text(emailStatus!),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
@@ -1444,7 +1467,7 @@ class _POSScreenState extends State<POSScreen> {
                           : (hasPhone ? customerPhone : 'No mobile number available'),
                     ),
                     value: canUseSms ? sendSms : false,
-                    onChanged: canUseSms ? (value) {
+                    onChanged: canUseSms && !sending && !smsAttempted ? (value) {
                       setDialogState(() {
                         sendSms = value ?? false;
                       });
@@ -1463,7 +1486,7 @@ class _POSScreenState extends State<POSScreen> {
                           : (hasEmail ? customerEmail : 'No email available'),
                     ),
                     value: canUseEmail ? sendEmail : false,
-                    onChanged: canUseEmail ? (value) {
+                    onChanged: canUseEmail && !sending && !emailAttempted ? (value) {
                       setDialogState(() {
                         sendEmail = value ?? false;
                       });
@@ -1475,19 +1498,37 @@ class _POSScreenState extends State<POSScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
+              onPressed: sending ? null : () => Navigator.of(dialogContext).pop(),
               child: const Text('Close'),
             ),
+            TextButton(
+              onPressed: sending ? null : () => _openPrintDialog(receiptHtml),
+              child: const Text('Print / Save PDF'),
+            ),
+            TextButton(
+              onPressed: sending ? null : () async {
+                try {
+                  await const MethodChannel('com.swiftmart/share').invokeMethod<void>(
+                      'shareReceipt', _buildCustomerMessage(bill, customerName));
+                  if (dialogContext.mounted) {
+                    setDialogState(() => availabilityError =
+                        'Choose a messaging app and recipient. Sending is not confirmed.');
+                  }
+                } catch (e) {
+                  if (dialogContext.mounted) {
+                    setDialogState(() => availabilityError = 'Unable to open sharing: $e');
+                  }
+                }
+              },
+              child: const Text('Share receipt'),
+            ),
             ElevatedButton(
-              onPressed: () async {
+              onPressed: sending || (!sendSms && !sendEmail) ? null : () async {
+                setDialogState(() => sending = true);
                 final message = _buildCustomerMessage(bill, customerName);
 
                 if (sendSms) {
-                  if (customerPhone == '-') {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cannot send SMS: customer mobile is not available.')),
-                    );
-                  } else {
+                  smsAttempted = true;
                     try {
                       await ApiService.sendBillSms(
                         to: customerPhone,
@@ -1495,28 +1536,16 @@ class _POSScreenState extends State<POSScreen> {
                         billId: bill.id,
                         customerName: customerName,
                         total: bill.total,
-                      );
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('SMS sent successfully')),
-                        );
-                      }
+                      ).timeout(const Duration(seconds: 15));
+                      smsStatus = 'SMS accepted by provider; delivery is not confirmed.';
                     } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('SMS send failed: $e')),
-                        );
-                      }
+                      smsStatus = 'SMS status uncertain: $e. Check before sending again.';
                     }
-                  }
+                  sendSms = false;
                 }
 
                 if (sendEmail) {
-                  if (customerEmail == '-') {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cannot send email: customer email is not available.')),
-                    );
-                  } else {
+                  emailAttempted = true;
                     try {
                       await ApiService.sendBillEmail(
                         to: customerEmail,
@@ -1525,36 +1554,32 @@ class _POSScreenState extends State<POSScreen> {
                         billId: bill.id,
                         customerName: customerName,
                         total: bill.total,
-                      );
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Email sent successfully')),
-                        );
-                      }
+                      ).timeout(const Duration(seconds: 15));
+                      emailStatus = 'Email accepted by provider; delivery is not confirmed.';
                     } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Email send failed: $e')),
-                        );
-                      }
+                      emailStatus = 'Email status uncertain: $e. Check before sending again.';
                     }
-                  }
+                  sendEmail = false;
                 }
-
-                _openPrintDialog(receiptHtml);
+                if (dialogContext.mounted) setDialogState(() => sending = false);
               },
-              child: const Text('Send & Print / Save PDF'),
+              child: const Text('Send selected'),
             ),
           ],
+          ),
         ),
       ),
     );
   }
 
   String _buildCustomerMessage(Bill bill, String customerName) {
-    return 'Dear $customerName, thank you for shopping at ${AppUtils.shopName}. '
-        'Bill ${bill.id} dated ${_formatDateTime(bill.createdAt)} totals '
-        '${AppUtils.formatCurrency(bill.total)}. We appreciate your visit and look forward to serving you again.';
+    final lines = bill.items.map((item) =>
+        '${item.productName}: ${item.quantity} x ${AppUtils.formatCurrency(item.price)} = ${AppUtils.formatCurrency(item.subtotal)}');
+    return '${AppUtils.shopName}\nBill ${bill.id} - ${_formatDateTime(bill.createdAt)}'
+        '\nCustomer: $customerName\n${lines.join('\n')}'
+        '\nSubtotal: ${AppUtils.formatCurrency(bill.subtotal)}'
+        '\nTax: ${AppUtils.formatCurrency(bill.taxAmount)}'
+        '\nTotal: ${AppUtils.formatCurrency(bill.total)}';
   }
 
   String _buildReceiptHtml(Bill bill, Customer? customer) {

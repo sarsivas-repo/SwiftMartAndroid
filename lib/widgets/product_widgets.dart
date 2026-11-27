@@ -286,50 +286,36 @@ class BillItemCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Text(
-                item.productName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Qty: ${item.quantity}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 96,
-              child: Text(
-                AppUtils.formatCurrency(item.subtotal),
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.productName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Text(AppUtils.formatCurrency(item.subtotal),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ],
             ),
-            if (onUpdateQuantity != null) ...[
-              const SizedBox(width: 4),
-              TextButton(
-                onPressed: onUpdateQuantity,
-                style: actionStyle,
-                child: const Text('Update Qty'),
-              ),
-            ],
-            if (onRemove != null) ...[
-              const SizedBox(width: 2),
-              TextButton(
-                onPressed: onRemove,
-                style: actionStyle,
-                child: const Text('Remove'),
-              ),
-            ],
+            Row(
+              children: [
+                Expanded(child: Text('Qty: ${item.quantity}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]))),
+                if (onUpdateQuantity != null)
+                  TextButton(onPressed: onUpdateQuantity, style: actionStyle,
+                      child: const Text('Update Qty')),
+                if (onRemove != null)
+                  TextButton(onPressed: onRemove, style: actionStyle,
+                      child: const Text('Remove')),
+              ],
+            ),
           ],
         ),
       ),

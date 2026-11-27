@@ -17,7 +17,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.swiftmart/share")
             .setMethodCallHandler { call, result ->
-                if (call.method != "shareOrder") {
+                if (call.method != "shareOrder" && call.method != "shareReceipt") {
                     result.notImplemented()
                 } else {
                     val text = call.arguments as? String
@@ -29,7 +29,8 @@ class MainActivity : FlutterActivity() {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, text)
                             }
-                            startActivity(Intent.createChooser(intent, "Share order with the shop"))
+                            val title = if (call.method == "shareReceipt") "Share receipt" else "Share order with the shop"
+                            startActivity(Intent.createChooser(intent, title))
                             result.success(null)
                         } catch (error: ActivityNotFoundException) {
                             result.error("sharing_unavailable", "No app can share this order", null)

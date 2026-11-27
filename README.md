@@ -30,6 +30,10 @@ Sales can include **Sell without stock** items without changing inventory in
 either mode; connected mode requires a direct-sale-capable backend. Checkout
 currently adds no tax. Configurable per-item tax and purchase tax accounting
 are not yet available; confirm tax obligations independently.
+The receipt can be shared through installed apps, including WhatsApp, SMS or
+email, without printing. Connected mode can also send using configured SMS and
+email providers. Sharing opens a chooser and does not confirm delivery; check
+uncertain provider outcomes before retrying.
 
 ## Customer catalog and order requests
 
