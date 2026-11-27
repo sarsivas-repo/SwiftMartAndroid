@@ -1,6 +1,6 @@
-SwiftMart 1.0.10
+SwiftMart 1.0.11
 Publisher: Saravanakumar
 Website: https://github.com/sarsivas-repo/SwiftMartAndroid
 Licensing: initial installation license; reusable signed duration extensions. Updates preserve the license expiry.
-Source commit: 845366d80fabb45cbd50d8d5515bd66ea56b7865
-Built at: 2026-11-27T22:10:00Z
+Source commit: 6b3e67f4c99abd800e3811ec41c2bb2f8c066a2a
+Built at: 2026-11-27T22:51:05Z
