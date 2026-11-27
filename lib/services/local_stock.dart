@@ -38,6 +38,20 @@ class LocalStock {
         created_at TEXT NOT NULL
       )
     ''');
+    await createPurchaseSchema(db);
+  }
+
+  static Future<void> createPurchaseSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS local_purchase_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL, unit_cost_minor INTEGER NOT NULL,
+        tax_mode TEXT NOT NULL, tax_basis_points INTEGER NOT NULL,
+        subtotal_minor INTEGER NOT NULL, tax_minor INTEGER NOT NULL, total_minor INTEGER NOT NULL,
+        supplier TEXT NOT NULL, invoice_reference TEXT NOT NULL, created_at TEXT NOT NULL
+      )
+    ''');
   }
 
   static String now() => DateTime.now().toIso8601String();
@@ -108,6 +122,56 @@ class LocalStock {
               ? (restock ? 'Manual restock' : 'Manual stock update')
               : notes.trim());
       return _product(tx, productId);
+    });
+  }
+
+  Future<Map<String, dynamic>> purchase(
+      String productId, String requestId, int quantity, int unitCostMinor,
+      String taxMode, int taxBasisPoints, String supplier, String invoiceReference) async {
+    const maxMinor = 9999999999;
+    if (!RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(requestId) ||
+        quantity <= 0 || quantity > 1000000 || unitCostMinor < 0 ||
+        unitCostMinor > maxMinor ~/ quantity || taxBasisPoints < 0 || taxBasisPoints > 10000 ||
+        !{'none', 'inclusive', 'additional'}.contains(taxMode) ||
+        (taxMode == 'none' && taxBasisPoints != 0) ||
+        supplier.trim().runes.length > 255 || invoiceReference.trim().runes.length > 255) {
+      throw ArgumentError('Invalid purchase.');
+    }
+    final amount = unitCostMinor * quantity;
+    final base = taxMode == 'inclusive'
+        ? (amount * 10000 + (10000 + taxBasisPoints) ~/ 2) ~/ (10000 + taxBasisPoints)
+        : amount;
+    final tax = taxMode == 'inclusive' ? amount - base :
+        taxMode == 'additional' ? (amount * taxBasisPoints + 5000) ~/ 10000 : 0;
+    final total = base + tax;
+    if (total > maxMinor) throw ArgumentError('Purchase total is too large.');
+    return db.transaction((tx) async {
+      final actor = await users.requireRoles(tx, _all);
+      final product = await _product(tx, productId);
+      final request = requestId.toLowerCase();
+      final existing = await tx.query('local_purchase_entries',
+          where: 'request_id = ?', whereArgs: [request]);
+      if (existing.isNotEmpty) {
+        final row = existing.single;
+        if (row['product_id'] != int.parse(productId) || row['user_id'] != int.parse(actor.id) ||
+            row['quantity'] != quantity || row['unit_cost_minor'] != unitCostMinor ||
+            row['tax_mode'] != taxMode || row['tax_basis_points'] != taxBasisPoints ||
+            row['supplier'] != supplier.trim() || row['invoice_reference'] != invoiceReference.trim()) {
+          throw StateError('Purchase request ID was already used.');
+        }
+        return {'purchase_id': row['id'], 'subtotal_minor': base, 'tax_minor': tax, 'total_minor': total};
+      }
+      final id = await tx.insert('local_purchase_entries', {
+        'request_id': request, 'product_id': int.parse(productId), 'user_id': int.parse(actor.id),
+        'quantity': quantity, 'unit_cost_minor': unitCostMinor, 'tax_mode': taxMode,
+        'tax_basis_points': taxBasisPoints, 'subtotal_minor': base, 'tax_minor': tax,
+        'total_minor': total, 'supplier': supplier.trim(), 'invoice_reference': invoiceReference.trim(),
+        'created_at': now(),
+      });
+      await tx.update('local_products', {'quantity': product.quantity + quantity, 'updated_at': now()},
+          where: 'id = ?', whereArgs: [productId]);
+      await log(tx, product, actor, 'add', quantity, 'Purchase #$id');
+      return {'purchase_id': id, 'subtotal_minor': base, 'tax_minor': tax, 'total_minor': total};
     });
   }
 

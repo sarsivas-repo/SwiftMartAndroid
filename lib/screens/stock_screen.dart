@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/app_settings_provider.dart';
 import '../models/models.dart';
 import '../widgets/product_widgets.dart';
+import '../widgets/purchase_dialog.dart';
 import '../utils/app_utils.dart';
 import '../utils/constants.dart';
 import '../services/api_service.dart';
@@ -577,6 +578,22 @@ class _AllProductsTab extends StatelessWidget {
             Text('Price: ${AppUtils.formatCurrency(product.price)}'),
             Text('Minimum Stock Level: ${product.reorderLevel}'),
             const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  showDialog<void>(
+                    context: parentContext,
+                    barrierDismissible: false,
+                    builder: (_) => PurchaseDialog(product: product),
+                  );
+                },
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('Record purchase'),
+              ),
+            ),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(

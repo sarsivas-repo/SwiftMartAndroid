@@ -15,7 +15,7 @@ class LocalDatabase {
     try {
       final path = '${await getDatabasesPath()}/swiftmart-test.db';
       final db = await openDatabase(path,
-          version: 4, onCreate: createSchema, onUpgrade: upgradeSchema);
+          version: 5, onCreate: createSchema, onUpgrade: upgradeSchema);
       return LocalUsers(db);
     } catch (_) {
       _opening = null;
@@ -35,6 +35,9 @@ class LocalDatabase {
     if (oldVersion < 3) await LocalSales.createSchema(db);
     if (oldVersion < 4 && newVersion >= 4) {
       await LocalSales.createDirectSchema(db);
+    }
+    if (oldVersion < 5 && newVersion >= 5) {
+      await LocalStock.createPurchaseSchema(db);
     }
   }
 }

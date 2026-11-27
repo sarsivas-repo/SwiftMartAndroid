@@ -303,6 +303,35 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> recordPurchase({
+    required String productId,
+    required String requestId,
+    required int quantity,
+    required int unitCostMinor,
+    required String taxMode,
+    required int taxBasisPoints,
+    required String supplier,
+    required String invoiceReference,
+  }) async {
+    if (_localUsers case final local?) {
+      return LocalStock(local).purchase(productId, requestId, quantity,
+          unitCostMinor, taxMode, taxBasisPoints, supplier, invoiceReference);
+    }
+    final response = await http.post(
+      Uri.parse('$_baseUrl/stock/purchase/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({'request_id': requestId, 'quantity': quantity,
+        'unit_cost_minor': unitCostMinor, 'tax_mode': taxMode,
+        'tax_basis_points': taxBasisPoints, 'supplier': supplier,
+        'invoice_reference': invoiceReference}),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(data['error']?.toString() ?? 'Failed to record purchase');
+    }
+    return data;
+  }
+
   static Future<void> restockProduct(
     String productId,
     int quantity, {

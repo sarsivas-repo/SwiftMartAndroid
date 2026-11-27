@@ -53,4 +53,21 @@ void main() {
     await ApiService.restockProduct(product.id, 2);
     expect((await ApiService.getProducts()).single.quantity, 2);
   });
+
+  test('purchase records tax and retries do not duplicate stock', () async {
+    final product = await ApiService.addProduct('Rice', '001', 'Food', 15, 2);
+    Future<Map<String, dynamic>> purchase({int quantity = 2}) =>
+        ApiService.recordPurchase(productId: product.id,
+            requestId: 'daae255c-d159-4b54-bd51-82641e091100',
+            quantity: quantity, unitCostMinor: 11000, taxMode: 'inclusive',
+            taxBasisPoints: 1000, supplier: 'Supplier', invoiceReference: 'INV1');
+    final recorded = await purchase();
+    expect(recorded['subtotal_minor'], 20000);
+    expect(recorded['tax_minor'], 2000);
+    expect(recorded['total_minor'], 22000);
+    expect((await purchase())['purchase_id'], recorded['purchase_id']);
+    await expectLater(purchase(quantity: 3), throwsStateError);
+    expect((await ApiService.getProducts()).single.quantity, 2);
+    expect(await db.query('local_purchase_entries'), hasLength(1));
+  });
 }

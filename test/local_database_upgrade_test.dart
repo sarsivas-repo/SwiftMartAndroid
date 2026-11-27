@@ -10,7 +10,7 @@ import 'package:swiftmart_frontend/services/local_users.dart';
 void main() {
   setUpAll(sqfliteFfiInit);
 
-  for (final oldVersion in [1, 2, 3]) {
+  for (final oldVersion in [1, 2, 3, 4]) {
     test('upgrade from version $oldVersion preserves local data', () async {
       final directory =
           await Directory.systemTemp.createTemp('swiftmart-upgrade-');
@@ -22,10 +22,13 @@ void main() {
               onCreate: (db, version) async {
                 await LocalUsers.createSchema(db);
                 if (version >= 2) await LocalStock.createSchema(db);
+                if (version >= 2) await db.execute('DROP TABLE local_purchase_entries');
                 if (version >= 3) {
                   await LocalSales.createSchema(db);
-                  await db.execute('DROP TABLE local_direct_draft_items');
-                  await db.execute('DROP TABLE local_direct_bill_items');
+                  if (version == 3) {
+                    await db.execute('DROP TABLE local_direct_draft_items');
+                    await db.execute('DROP TABLE local_direct_bill_items');
+                  }
                 }
               },
             ));
@@ -52,13 +55,14 @@ void main() {
         await db.close();
         db = await databaseFactoryFfi.openDatabase(path,
             options: OpenDatabaseOptions(
-                version: 4, onUpgrade: LocalDatabase.upgradeSchema));
+                version: 5, onUpgrade: LocalDatabase.upgradeSchema));
         expect((await db.query('local_users')).single['username'], 'admin');
         expect(await db.query('local_products'),
             hasLength(oldVersion >= 2 ? 1 : 0));
         expect(await db.query('local_bills'), isEmpty);
         expect(await db.query('local_direct_draft_items'), isEmpty);
         expect(await db.query('local_direct_bill_items'), isEmpty);
+        expect(await db.query('local_purchase_entries'), isEmpty);
         await db.close();
       } finally {
         await directory.delete(recursive: true);

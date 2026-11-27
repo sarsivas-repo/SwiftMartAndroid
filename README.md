@@ -28,8 +28,11 @@ standalone mode. Connected mode still uses the server.
 
 Sales can include **Sell without stock** items without changing inventory in
 either mode; connected mode requires a direct-sale-capable backend. Checkout
-currently adds no tax. Configurable per-item tax and purchase tax accounting
-are not yet available; confirm tax obligations independently.
+currently adds no tax. Configurable per-item sales tax is not yet available;
+confirm tax obligations independently. In Stock, open a product and select
+**Record purchase** to save supplier cost, quantity and purchase tax treatment.
+The stock increase and purchase record are saved together. On an uncertain
+result, retry unchanged in the same dialog or check before starting again.
 The receipt can be shared through installed apps, including WhatsApp, SMS or
 email, without printing. Connected mode can also send using configured SMS and
 email providers. Sharing opens a chooser and does not confirm delivery; check
