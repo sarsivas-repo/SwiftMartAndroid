@@ -455,13 +455,38 @@ class ApiService {
     throw Exception(data['error']?.toString() ?? 'Failed to add item to draft bill');
   }
 
+  static Future<Bill> addDirectItemToDraftBill(
+      String draftId, String name, int quantity, int pricePaise) async {
+    if (_localUsers case final local?) {
+      return LocalSales(local).addDirectItem(draftId, name, quantity, pricePaise);
+    }
+    final response = await http.post(
+      Uri.parse('$_baseUrl/billing/drafts/$draftId/direct-items'),
+      headers: _getHeaders(),
+      body: jsonEncode({'name': name, 'quantity': quantity, 'price_paise': pricePaise}),
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      return Bill.fromJson(
+        _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
+      );
+    }
+    throw Exception(data['error']?.toString() ?? 'Failed to add direct-sale item');
+  }
+
   static Future<Bill> removeItemFromDraftBill(
     String draftId,
     String productId,
   ) async {
-    if (_localUsers case final local?) return LocalSales(local).removeItem(draftId, productId);
+    if (_localUsers case final local?) {
+      return productId.startsWith('direct:')
+          ? LocalSales(local).changeDirectItem(draftId, productId)
+          : LocalSales(local).removeItem(draftId, productId);
+    }
     final response = await http.delete(
-      Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
+      Uri.parse(productId.startsWith('direct:')
+          ? '$_baseUrl/billing/drafts/$draftId/direct-items/${productId.substring(7)}'
+          : '$_baseUrl/billing/drafts/$draftId/items/$productId'),
       headers: _getHeaders(),
     );
 
@@ -480,9 +505,15 @@ class ApiService {
     String productId,
     int quantity,
   ) async {
-    if (_localUsers case final local?) return LocalSales(local).setItem(draftId, productId, quantity);
+    if (_localUsers case final local?) {
+      return productId.startsWith('direct:')
+          ? LocalSales(local).changeDirectItem(draftId, productId, quantity: quantity)
+          : LocalSales(local).setItem(draftId, productId, quantity);
+    }
     final response = await http.put(
-      Uri.parse('$_baseUrl/billing/drafts/$draftId/items/$productId'),
+      Uri.parse(productId.startsWith('direct:')
+          ? '$_baseUrl/billing/drafts/$draftId/direct-items/${productId.substring(7)}'
+          : '$_baseUrl/billing/drafts/$draftId/items/$productId'),
       headers: _getHeaders(),
       body: jsonEncode({'quantity': quantity}),
     );
@@ -1115,9 +1146,13 @@ class ApiService {
         .map((item) => Map<String, dynamic>.from(item as Map))
         .map(
           (item) => {
-            'id': item['product_id']?.toString() ?? '',
+            'id': item['direct_item_id'] != null
+                ? 'direct:${item['direct_item_id']}'
+                : item['product_id']?.toString() ?? '',
             'bill_id': json['id']?.toString() ?? '',
-            'product_id': item['product_id']?.toString() ?? '',
+            'product_id': item['direct_item_id'] != null
+                ? 'direct:${item['direct_item_id']}'
+                : item['product_id']?.toString() ?? '',
             'product_name': item['product_name']?.toString() ?? '',
             'price': _asDouble(item['price']),
             'quantity': _asInt(item['quantity']),

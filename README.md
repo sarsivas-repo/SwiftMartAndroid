@@ -26,6 +26,11 @@ The test preview covers **accounts, roles, stock, customers and sales**. It does
 not synchronize data; salary and reporting workflows are not available in
 standalone mode. Connected mode still uses the server.
 
+Sales can include **Sell without stock** items without changing inventory in
+either mode; connected mode requires a direct-sale-capable backend. Checkout
+currently adds no tax. Configurable per-item tax and purchase tax accounting
+are not yet available; confirm tax obligations independently.
+
 ## Customer catalog and order requests
 
 The shop must enable the backend's opt-in customer catalog and tell customers

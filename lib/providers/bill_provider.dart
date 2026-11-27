@@ -8,7 +8,7 @@ class BillProvider extends ChangeNotifier {
   List<Bill> _bills = [];
   bool _isLoading = false;
   String? _error;
-  double _taxRate = 0.10; // 10% tax
+  final double _taxRate = 0;
 
   Bill? get currentBill {
     if (_openBills.isEmpty) {
@@ -35,7 +35,7 @@ class BillProvider extends ChangeNotifier {
   double get currentSubtotal =>
       currentBill?.items.fold<double>(0.0, (sum, item) => sum + item.subtotal) ?? 0.0;
 
-  double get currentTax => currentSubtotal * _taxRate;
+  double get currentTax => (currentSubtotal * _taxRate * 100).round() / 100;
 
   double get currentTotal => currentSubtotal + currentTax;
 
@@ -106,6 +106,26 @@ class BillProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> addDirectItem(String name, int quantity, int pricePaise) async {
+    final active = currentBill;
+    if (active == null) return false;
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final updated = await ApiService.addDirectItemToDraftBill(
+          active.id, name, quantity, pricePaise);
+      _replaceOpenBill(updated);
+      return true;
+    } catch (e) {
+      _error = e.toString();
       return false;
     } finally {
       _isLoading = false;

@@ -9,16 +9,24 @@ import 'package:swiftmart_frontend/providers/product_provider.dart';
 import 'package:swiftmart_frontend/screens/pos_screen.dart';
 
 class _BillProvider extends BillProvider {
+  String? added;
   @override
   Future<void> loadOpenBills() async {}
 
   @override
   Future<void> createNewBill(String customerId) async {}
+
+  @override
+  Future<bool> addDirectItem(String name, int quantity, int pricePaise) async {
+    added = '$name:$quantity:$pricePaise';
+    return true;
+  }
 }
 
 void main() {
   testWidgets('standalone sales opens on a phone-sized screen', (tester) async {
     final auth = AuthProvider();
+    final bills = _BillProvider();
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(MultiProvider(
@@ -27,7 +35,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
         ChangeNotifierProvider(create: (_) => CustomerProvider()),
-        ChangeNotifierProvider<BillProvider>(create: (_) => _BillProvider()),
+        ChangeNotifierProvider<BillProvider>.value(value: bills),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -47,7 +55,15 @@ void main() {
         ),
       ),
     ));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sell without stock'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Item name'), 'Eggs');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Quantity'), '10');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Price per item'), '6.50');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add item'));
+    await tester.pumpAndSettle();
+    expect(bills.added, 'Eggs:10:650');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     tester.view.resetPhysicalSize();

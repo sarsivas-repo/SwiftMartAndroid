@@ -626,8 +626,13 @@ class _POSScreenState extends State<POSScreen> {
                         final item = billProvider.currentBill!.items[index];
                         return BillItemCard(
                           item: item,
-                          onRemove: () {
-                            billProvider.removeItemFromBill(item.id);
+                          onRemove: () async {
+                            final removed = await billProvider.removeItemFromBill(item.id);
+                            if (!removed && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(billProvider.error ?? 'Unable to remove item.'),
+                              ));
+                            }
                           },
                           onUpdateQuantity: () {
                             _showUpdateQuantityDialog(item);
@@ -651,13 +656,21 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                   child: Column(
                     children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: billProvider.isLoading ? null : _showDirectSaleDialog,
+                          icon: const Icon(Icons.add_shopping_cart),
+                          label: const Text('Sell without stock'),
+                        ),
+                      ),
                       _TotalRow(
                         label: 'Subtotal',
                         value: AppUtils.formatCurrency(billProvider.currentSubtotal),
                       ),
                       const SizedBox(height: 8),
                       _TotalRow(
-                        label: 'Tax (10%)',
+                        label: 'Tax (${(billProvider.taxRate * 100).toStringAsFixed(2)}%)',
                         value: AppUtils.formatCurrency(billProvider.currentTax),
                       ),
                       const Divider(height: 16),
@@ -670,6 +683,72 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                 );
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDirectSaleDialog() async {
+    var name = '';
+    var quantity = '1';
+    var price = '';
+    String? error;
+    var saving = false;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Sell without stock'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('This item will not change inventory.'),
+                TextFormField(onChanged: (value) => name = value, maxLength: 255,
+                    decoration: const InputDecoration(labelText: 'Item name')),
+                TextFormField(initialValue: '1', onChanged: (value) => quantity = value,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Quantity')),
+                TextFormField(onChanged: (value) => price = value,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Price per item')),
+                if (error != null)
+                  Text(error!, style: const TextStyle(color: Colors.red)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving ? null : () async {
+                final count = int.tryParse(quantity.trim());
+                final match = RegExp(r'^(\d{1,8})(?:\.(\d{1,2}))?$')
+                    .firstMatch(price.trim());
+                if (name.trim().isEmpty || count == null ||
+                    count <= 0 || count > 1000000 || match == null) {
+                  setDialogState(() => error =
+                      'Enter a name, quantity and valid price (up to 2 decimals).');
+                  return;
+                }
+                final paise = int.parse(match.group(1)!) * 100 +
+                    int.parse((match.group(2) ?? '').padRight(2, '0'));
+                setDialogState(() { saving = true; error = null; });
+                final bills = context.read<BillProvider>();
+                final success = await bills.addDirectItem(name.trim(), count, paise);
+                if (!dialogContext.mounted) return;
+                if (success) {
+                  Navigator.pop(dialogContext);
+                } else {
+                  setDialogState(() { saving = false; error = bills.error ?? 'Unable to add item.'; });
+                }
+              },
+              child: const Text('Add item'),
             ),
           ],
         ),

@@ -3,13 +3,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:swiftmart_frontend/services/local_database.dart';
+import 'package:swiftmart_frontend/services/local_sales.dart';
 import 'package:swiftmart_frontend/services/local_stock.dart';
 import 'package:swiftmart_frontend/services/local_users.dart';
 
 void main() {
   setUpAll(sqfliteFfiInit);
 
-  for (final oldVersion in [1, 2]) {
+  for (final oldVersion in [1, 2, 3]) {
     test('upgrade from version $oldVersion preserves local data', () async {
       final directory =
           await Directory.systemTemp.createTemp('swiftmart-upgrade-');
@@ -21,6 +22,11 @@ void main() {
               onCreate: (db, version) async {
                 await LocalUsers.createSchema(db);
                 if (version >= 2) await LocalStock.createSchema(db);
+                if (version >= 3) {
+                  await LocalSales.createSchema(db);
+                  await db.execute('DROP TABLE local_direct_draft_items');
+                  await db.execute('DROP TABLE local_direct_bill_items');
+                }
               },
             ));
         await db.insert('local_users', {
@@ -31,7 +37,7 @@ void main() {
           'password_hash': 'hash',
           'created_at': '2025-01-01',
         });
-        if (oldVersion == 2) {
+        if (oldVersion >= 2) {
           await db.insert('local_products', {
             'name': 'Rice',
             'sku': '001',
@@ -46,11 +52,13 @@ void main() {
         await db.close();
         db = await databaseFactoryFfi.openDatabase(path,
             options: OpenDatabaseOptions(
-                version: 3, onUpgrade: LocalDatabase.upgradeSchema));
+                version: 4, onUpgrade: LocalDatabase.upgradeSchema));
         expect((await db.query('local_users')).single['username'], 'admin');
         expect(await db.query('local_products'),
-            hasLength(oldVersion == 2 ? 1 : 0));
+            hasLength(oldVersion >= 2 ? 1 : 0));
         expect(await db.query('local_bills'), isEmpty);
+        expect(await db.query('local_direct_draft_items'), isEmpty);
+        expect(await db.query('local_direct_bill_items'), isEmpty);
         await db.close();
       } finally {
         await directory.delete(recursive: true);

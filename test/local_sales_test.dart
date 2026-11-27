@@ -61,14 +61,51 @@ void main() {
     final draft = await ApiService.createDraftBill(null);
     await ApiService.addItemToDraftBill(draft.id, first.id, 3);
     await ApiService.addItemToDraftBill(draft.id, second.id, 3);
+    await ApiService.addDirectItemToDraftBill(draft.id, 'Eggs', 2, 650);
     await ApiService.updateStock(second.id, -3);
     await expectLater(
         ApiService.checkoutDraftBill(draft.id, 0, 'cash'), throwsStateError);
     final products = await ApiService.getProducts();
     expect(products.firstWhere((p) => p.id == first.id).quantity, 5);
     expect(products.firstWhere((p) => p.id == second.id).quantity, 2);
-    expect((await ApiService.getDraftBills()).single.items.length, 2);
+    expect((await ApiService.getDraftBills()).single.items.length, 3);
     expect(await db.query('local_bills'), isEmpty);
+    expect(await db.query('local_direct_bill_items'), isEmpty);
+    expect(await db.query('local_direct_draft_items'), hasLength(1));
+  });
+
+  test('direct and stocked items retain snapshots without changing direct stock', () async {
+    final product = await ApiService.addProduct('Rice', '001', 'Food', 15, 2);
+    await ApiService.restockProduct(product.id, 5);
+    final customer = await ApiService.registerCustomer('Customer', '', '', '');
+    var draft = await ApiService.createDraftBill(int.parse(customer.id));
+    draft = await ApiService.addDirectItemToDraftBill(draft.id, 'Eggs', 10, 650);
+    final directId = draft.items.single.id;
+    expect(directId, startsWith('direct:'));
+    draft = await ApiService.updateDraftItemQuantity(draft.id, directId, 8);
+    draft = await ApiService.addItemToDraftBill(draft.id, product.id, 2);
+    expect(draft.subtotal, 82);
+    expect((await ApiService.getDraftBills()).single.items.length, 2);
+    final checkout = await ApiService.checkoutDraftBill(draft.id, 0, 'cash');
+    expect(checkout['total'], 82);
+    expect((await ApiService.getProducts()).single.quantity, 3);
+    final history = await ApiService.getCustomerHistory(customer.id);
+    expect(history.single.items.firstWhere((item) => item.productName == 'Eggs').quantity, 8);
+    expect(await db.query('local_direct_draft_items'), isEmpty);
+    expect(await db.query('local_direct_bill_items'), hasLength(1));
+  });
+
+  test('direct items can be removed and respect draft ownership', () async {
+    final draft = await ApiService.createDraftBill(null);
+    final updated = await ApiService.addDirectItemToDraftBill(draft.id, 'Eggs', 1, 100);
+    final directId = updated.items.single.id;
+    await users.createUser('cashier', '', 'password123', UserRole.cashier);
+    users.logout();
+    await users.login('cashier', 'password123');
+    await expectLater(ApiService.removeItemFromDraftBill(draft.id, directId), throwsStateError);
+    users.logout();
+    await users.login('admin', 'password123');
+    expect((await ApiService.removeItemFromDraftBill(draft.id, directId)).items, isEmpty);
   });
 
   test('drafts are private to each cashier', () async {

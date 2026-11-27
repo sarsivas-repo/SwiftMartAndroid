@@ -51,6 +51,22 @@ class LocalSales {
         PRIMARY KEY(bill_id, product_id)
       )
     ''');
+    await createDirectSchema(db);
+  }
+
+  static Future<void> createDirectSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS local_direct_draft_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, draft_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL, price_paise INTEGER NOT NULL, quantity INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS local_direct_bill_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, bill_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL, price_paise INTEGER NOT NULL, quantity INTEGER NOT NULL
+      )
+    ''');
   }
 
   static int _id(String value) {
@@ -146,6 +162,16 @@ class LocalSales {
                   (item['price'] as num).toDouble() * (item['quantity'] as int),
             ))
         .toList();
+    final directItems = await tx.query('local_direct_draft_items',
+        where: 'draft_id = ?', whereArgs: [draftId], orderBy: 'id');
+    billItems.addAll(directItems.map((item) {
+      final itemId = 'direct:${item['id']}';
+      final price = (item['price_paise'] as int) / 100;
+      final quantity = item['quantity'] as int;
+      return BillItem(id: itemId, billId: id, productId: itemId,
+          productName: item['product_name'] as String, price: price,
+          quantity: quantity, subtotal: price * quantity);
+    }));
     final subtotal =
         billItems.fold<double>(0, (sum, item) => sum + item.subtotal);
     return Bill(
@@ -223,6 +249,40 @@ class LocalSales {
     });
   }
 
+  Future<Bill> addDirectItem(String draftId, String name, int quantity, int pricePaise) async {
+    if (name.trim().isEmpty || name.runes.length > 255 || quantity <= 0 ||
+        quantity > 1000000 || pricePaise < 0 || pricePaise > 9999999999) {
+      throw ArgumentError('Invalid direct-sale item.');
+    }
+    return db.transaction((tx) async {
+      final actor = await users.requireRoles(tx, _salesRoles);
+      await _draft(tx, draftId, actor);
+      await tx.insert('local_direct_draft_items', {
+        'draft_id': _id(draftId), 'product_name': name.trim(),
+        'quantity': quantity, 'price_paise': pricePaise,
+      });
+      return _draft(tx, draftId, actor);
+    });
+  }
+
+  Future<Bill> changeDirectItem(String draftId, String itemId, {int? quantity}) async {
+    if (quantity != null && (quantity <= 0 || quantity > 1000000)) {
+      throw ArgumentError('Invalid quantity.');
+    }
+    final directId = _id(itemId.substring(7));
+    return db.transaction((tx) async {
+      final actor = await users.requireRoles(tx, _salesRoles);
+      await _draft(tx, draftId, actor);
+      final count = quantity == null
+          ? await tx.delete('local_direct_draft_items',
+              where: 'id = ? AND draft_id = ?', whereArgs: [directId, _id(draftId)])
+          : await tx.update('local_direct_draft_items', {'quantity': quantity},
+              where: 'id = ? AND draft_id = ?', whereArgs: [directId, _id(draftId)]);
+      if (count != 1) throw StateError('Direct-sale item not found.');
+      return _draft(tx, draftId, actor);
+    });
+  }
+
   Future<Bill> removeItem(String draftId, String productId) async =>
       db.transaction((tx) async {
         final actor = await users.requireRoles(tx, _salesRoles);
@@ -238,6 +298,8 @@ class LocalSales {
         final actor = await users.requireRoles(tx, _salesRoles);
         await _draft(tx, draftId, actor);
         await tx.delete('local_draft_items',
+            where: 'draft_id = ?', whereArgs: [_id(draftId)]);
+        await tx.delete('local_direct_draft_items',
             where: 'draft_id = ?', whereArgs: [_id(draftId)]);
         await tx
             .delete('local_drafts', where: 'id = ?', whereArgs: [_id(draftId)]);
@@ -255,6 +317,7 @@ class LocalSales {
         throw StateError('Cannot checkout an empty bill.');
       }
       for (final item in draft.items) {
+        if (item.productId.startsWith('direct:')) continue;
         final rows = await tx.query('local_products',
             where: 'id = ?', whereArgs: [_id(item.productId)]);
         if (rows.isEmpty || (rows.single['quantity'] as int) < item.quantity) {
@@ -272,6 +335,17 @@ class LocalSales {
         'created_at': LocalStock.now(),
       });
       for (final item in draft.items) {
+        if (item.productId.startsWith('direct:')) {
+          final direct = await tx.query('local_direct_draft_items',
+              where: 'id = ? AND draft_id = ?',
+              whereArgs: [_id(item.productId.substring(7)), _id(draftId)]);
+          if (direct.length != 1) throw StateError('Direct-sale item not found.');
+          await tx.insert('local_direct_bill_items', {
+            'bill_id': id, 'product_name': item.productName,
+            'price_paise': direct.single['price_paise'], 'quantity': item.quantity,
+          });
+          continue;
+        }
         final rows = await tx.query('local_products',
             where: 'id = ?', whereArgs: [_id(item.productId)]);
         final product = LocalStock.product(rows.single);
@@ -294,6 +368,8 @@ class LocalSales {
         });
       }
       await tx.delete('local_draft_items',
+          where: 'draft_id = ?', whereArgs: [_id(draftId)]);
+      await tx.delete('local_direct_draft_items',
           where: 'draft_id = ?', whereArgs: [_id(draftId)]);
       await tx
           .delete('local_drafts', where: 'id = ?', whereArgs: [_id(draftId)]);
@@ -322,6 +398,16 @@ class LocalSales {
                   (item['price'] as num).toDouble() * (item['quantity'] as int),
             ))
         .toList();
+    final directItems = await tx.query('local_direct_bill_items',
+        where: 'bill_id = ?', whereArgs: [_id(id)], orderBy: 'id');
+    billItems.addAll(directItems.map((item) {
+      final itemId = 'direct:${item['id']}';
+      final price = (item['price_paise'] as int) / 100;
+      final quantity = item['quantity'] as int;
+      return BillItem(id: itemId, billId: id, productId: itemId,
+          productName: item['product_name'] as String, price: price,
+          quantity: quantity, subtotal: price * quantity);
+    }));
     return Bill(
       id: id,
       customerId: row['customer_id']?.toString() ?? 'guest',
