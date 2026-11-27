@@ -24,7 +24,7 @@ install -m 0644 "$work/SwiftMart-$version-android.apk" release/
 {
   printf 'SwiftMart %s\nPublisher: Saravanakumar\n' "$version"
   printf 'Website: https://github.com/sarsivas-repo/SwiftMartAndroid\n'
-  printf 'Licensing: one 30-day installation trial; reusable signed duration extensions. Updates do not reset the trial.\n'
+  printf 'Licensing: initial installation license; reusable signed duration extensions. Updates preserve the license expiry.\n'
   printf 'Source commit: %s\n' "$(git rev-parse HEAD)"
   printf 'Built at: %s\n' "$(date -u +%FT%TZ)"
 } > release/BUILD-INFO.txt

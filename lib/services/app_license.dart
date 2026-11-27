@@ -95,7 +95,7 @@ class AppLicense extends ChangeNotifier {
       return 'This license was issued in the future. Correct the system clock.';
     }
     if (!_highWater.isBefore(expiresAt!)) {
-      return 'Your SwiftMart trial or license has expired. Request an extension from Saravanakumar and activate it below.';
+      return 'Your SwiftMart license has expired. Request an extension from Saravanakumar and activate it below.';
     }
     return null;
   }

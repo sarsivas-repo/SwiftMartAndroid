@@ -4,16 +4,16 @@ This project adapts the Flutter application from `SwiftMart-Frontend` for Androi
 It is a work in progress, not a production release: standalone salary and
 reports are not yet implemented.
 
-Each release provides one signed [APK](release/SwiftMart-1.0.8-android.apk). Publisher:
+Each release provides one signed [APK](release/SwiftMart-1.0.9-android.apk). Publisher:
 **Saravanakumar**. Verify them against [SHA256SUMS](release/SHA256SUMS); publishing
 details are in [BUILD-INFO.txt](release/BUILD-INFO.txt). They have not been
 validated on a physical Android device.
 
-## Trial and renewable licenses
+## Renewable licenses
 
-Each installation works for **30 x 24 hours from first app launch**, including
+The initial license starts on first app launch and applies to
 offline/standalone, server and customer modes. Updates/reinstalls without clearing
-data preserve the original expiry; new versions do not give another trial.
+data preserve the original expiry; new versions do not restart the license.
 At expiry, login and application screens are blocked; existing standalone
 sessions and API operations are checked too. The screen refreshes every 30
 seconds and when returning to the app. Clock rollback beyond five minutes and
@@ -29,8 +29,8 @@ devices. Reapplying a code does not add more days. Publisher scripts in
 Updates keep the existing application ID and release signing key, preserving
 standalone accounts, stock and bills. **Do not uninstall or clear app data
 when upgrading**. Android rejects downgrades to older version codes. This is
-offline trial enforcement, not tamper-proof licensing: clearing application
-data, uninstalling or modifying/rebuilding the app can reset/bypass local trial
+offline license enforcement, not tamper-proof licensing: clearing application
+data, uninstalling or modifying/rebuilding the app can reset/bypass local license
 state. Strong enforcement requires online activation and controlled distribution.
 A licensed client still cannot use an expired backend; activate there too.
 Android signing confirms package identity, not Windows-style
@@ -119,7 +119,7 @@ both `version` and Android build number for a new release. Publish only the
 latest APK, checksums and publishing information; older builds stay in Git
 history. Keep the same APK signing key and application ID.
 For manual licensed builds, pass `--dart-define=SWIFTMART_LICENSED=true` and
-`--dart-define=SWIFTMART_VERSION=1.0.8` (matching `--build-name`).
+`--dart-define=SWIFTMART_VERSION=1.0.9` (matching `--build-name`).
 Normal debug/source builds retain unrestricted development behavior.
 
 Keep the keystore and password backed up securely: Android upgrades require the

@@ -62,7 +62,7 @@ class _AppEditionGateState extends State<AppEditionGate>
             );
           }
           final label = license.licensed
-              ? '${license.kind}: ${license.daysRemaining} days left | Expires ${license.expiresAt!.toIso8601String().substring(0, 10)} UTC'
+              ? 'License valid until ${license.expiresAt!.toIso8601String().substring(0, 10)} UTC'
               : 'Development build';
           return Column(
             children: [
@@ -146,7 +146,9 @@ class _LicenseSettingsState extends State<LicenseSettings> {
             padding: const EdgeInsets.all(24),
             children: [
               const Text('Publisher: Saravanakumar'),
-              Text('Version: ${license.version} | License: ${license.kind}'),
+              Text(
+                'Version: ${license.version} | License: ${license.kind == 'trial' ? 'Initial license' : license.kind}',
+              ),
               if (license.customer != null)
                 Text('Customer: ${license.customer}'),
               SelectableText(

@@ -18,7 +18,7 @@ void main() {
   final code = vector['code'] as String;
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('installation trial is 30 days and upgrades never restart it', () async {
+  test('initial license expiry is preserved across upgrades', () async {
     var now = DateTime.utc(2026, 11, 27);
     AppLicense release(String version) => AppLicense(
           licensed: true,
@@ -151,7 +151,8 @@ void main() {
     expect((await db.query('local_users')).length, 1);
   });
 
-  testWidgets('open Trial hides login when its 30 days expire', (tester) async {
+  testWidgets('initial license shows validity and hides login at expiry',
+      (tester) async {
     var now = DateTime.utc(2026, 11, 27);
     final license = AppLicense(
       licensed: true,
@@ -169,7 +170,17 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Login form'), findsOneWidget);
-    expect(find.textContaining('30 days left'), findsOneWidget);
+    expect(find.textContaining('License valid until'), findsOneWidget);
+    expect(
+        find.textContaining(
+            RegExp(r'trial|\d+[- ]days?', caseSensitive: false)),
+        findsNothing);
+    await tester.tap(find.text('License settings'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Initial license'), findsOneWidget);
+    expect(find.text('Days remaining: 30'), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
     now = now.add(const Duration(days: 30));
     await tester.pump(const Duration(seconds: 30));
     await tester.pumpAndSettle();
@@ -179,7 +190,10 @@ void main() {
     await tester.tap(find.text('Activate / extend license'));
     await tester.pumpAndSettle();
     expect(find.text('Login form'), findsOneWidget);
-    expect(find.textContaining('paid:'), findsOneWidget);
+    expect(find.textContaining('License valid until'), findsOneWidget);
+    await tester.tap(find.text('License settings'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('License: paid'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     license.dispose();
   });
