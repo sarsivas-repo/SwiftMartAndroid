@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
+import 'local_pricing.dart';
 import 'local_stock.dart';
 import 'local_users.dart';
 
@@ -148,42 +149,49 @@ class LocalSales {
         where: 'id = ? AND owner_id = ?', whereArgs: [draftId, _id(actor.id)]);
     if (rows.isEmpty) throw StateError('Draft not found.');
     final row = rows.single;
-    final items = await tx.query('local_draft_items',
-        where: 'draft_id = ?', whereArgs: [draftId], orderBy: 'rowid');
-    final billItems = items
-        .map((item) => BillItem(
-              id: item['product_id'].toString(),
-              billId: id,
-              productId: item['product_id'].toString(),
-              productName: item['product_name'] as String,
-              price: (item['price'] as num).toDouble(),
-              quantity: item['quantity'] as int,
-              subtotal:
-                  (item['price'] as num).toDouble() * (item['quantity'] as int),
-            ))
-        .toList();
-    final directItems = await tx.query('local_direct_draft_items',
-        where: 'draft_id = ?', whereArgs: [draftId], orderBy: 'id');
-    billItems.addAll(directItems.map((item) {
-      final itemId = 'direct:${item['id']}';
-      final price = (item['price_paise'] as int) / 100;
+    final version = row['pricing_version'] as int;
+    var baseMinor = 0, taxMinor = 0, totalMinor = 0;
+    BillItem line(Map<String, Object?> item, bool direct) {
+      final itemId = direct ? 'direct:${item['id']}' : item['product_id'].toString();
+      final price = direct ? (item['price_paise'] as int) / 100 : (item['price'] as num).toDouble();
       final quantity = item['quantity'] as int;
+      final mode = version == 1 ? item['tax_mode'] as String : 'none';
+      final rate = version == 1 ? item['tax_basis_points'] as int : 0;
+      if (version == 0) {
+        return BillItem(id: itemId, billId: id, productId: itemId,
+            productName: item['product_name'] as String, price: price,
+            quantity: quantity, subtotal: price * quantity);
+      }
+      final amounts = LocalPricing.amounts((price * 100).round(), quantity, rate, mode,
+          mrpMinor: direct ? null : item['mrp_minor'] as int?);
+      baseMinor += amounts.base;
+      taxMinor += amounts.tax;
+      totalMinor += amounts.total;
+      if (totalMinor > LocalPricing.maxMinor) throw StateError('Bill total is too large.');
       return BillItem(id: itemId, billId: id, productId: itemId,
           productName: item['product_name'] as String, price: price,
-          quantity: quantity, subtotal: price * quantity);
-    }));
-    final subtotal =
+          quantity: quantity, subtotal: amounts.total / 100,
+          taxMode: mode, taxBasisPoints: rate, taxMinor: amounts.tax);
+    }
+    final items = await tx.query('local_draft_items',
+        where: 'draft_id = ?', whereArgs: [draftId], orderBy: 'rowid');
+    final billItems = items.map((item) => line(item, false)).toList();
+    final directItems = await tx.query('local_direct_draft_items',
+        where: 'draft_id = ?', whereArgs: [draftId], orderBy: 'id');
+    billItems.addAll(directItems.map((item) => line(item, true)));
+    final subtotal = version == 1 ? baseMinor / 100 :
         billItems.fold<double>(0, (sum, item) => sum + item.subtotal);
     return Bill(
         id: id,
         customerId: row['customer_id']?.toString() ?? 'guest',
         subtotal: subtotal,
-        taxAmount: 0,
-        total: subtotal,
+        taxAmount: version == 1 ? taxMinor / 100 : 0,
+        total: version == 1 ? totalMinor / 100 : subtotal,
         status: BillStatus.pending,
         paymentMethod: 'cash',
         createdAt: DateTime.parse(row['created_at'] as String),
-        items: billItems);
+        items: billItems,
+        pricingVersion: version);
   }
 
   Future<List<Bill>> drafts() async {
@@ -201,6 +209,7 @@ class LocalSales {
           'owner_id': _id(actor.id),
           'customer_id': customerId,
           'created_at': LocalStock.now(),
+          'pricing_version': 1,
         });
         return _draft(tx, id.toString(), actor);
       });
@@ -222,7 +231,7 @@ class LocalSales {
     }
     return db.transaction((tx) async {
       final actor = await users.requireRoles(tx, _salesRoles);
-      await _draft(tx, draftId, actor);
+      final draft = await _draft(tx, draftId, actor);
       final products = await tx.query('local_products',
           where: 'id = ?', whereArgs: [_id(productId)]);
       if (products.isEmpty) throw StateError('Product not found.');
@@ -239,27 +248,42 @@ class LocalSales {
           {
             'draft_id': _id(draftId),
             'product_id': _id(productId),
-            'product_name': product.name,
+            'product_name': existing.isEmpty ? product.name : existing.single['product_name'],
             'price':
                 existing.isEmpty ? product.price : existing.single['price'],
             'quantity': next,
+            'tax_mode': existing.isEmpty
+                ? (draft.pricingVersion == 1 ? product.taxMode : 'none')
+                : existing.single['tax_mode'],
+            'tax_basis_points': existing.isEmpty
+                ? (draft.pricingVersion == 1 ? product.taxBasisPoints : 0)
+                : existing.single['tax_basis_points'],
+            'mrp_minor': existing.isEmpty
+                ? (draft.pricingVersion == 1 ? product.mrpMinor : null)
+                : existing.single['mrp_minor'],
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
       return _draft(tx, draftId, actor);
     });
   }
 
-  Future<Bill> addDirectItem(String draftId, String name, int quantity, int pricePaise) async {
+  Future<Bill> addDirectItem(String draftId, String name, int quantity, int pricePaise,
+      {String taxMode = 'none', int taxBasisPoints = 0}) async {
     if (name.trim().isEmpty || name.runes.length > 255 || quantity <= 0 ||
         quantity > 1000000 || pricePaise < 0 || pricePaise > 9999999999) {
       throw ArgumentError('Invalid direct-sale item.');
     }
     return db.transaction((tx) async {
       final actor = await users.requireRoles(tx, _salesRoles);
-      await _draft(tx, draftId, actor);
+      final draft = await _draft(tx, draftId, actor);
+      if (draft.pricingVersion == 0 && taxMode != 'none') {
+        throw StateError('Tax options require a new bill.');
+      }
+      LocalPricing.amounts(pricePaise, quantity, taxBasisPoints, taxMode);
       await tx.insert('local_direct_draft_items', {
         'draft_id': _id(draftId), 'product_name': name.trim(),
         'quantity': quantity, 'price_paise': pricePaise,
+        'tax_mode': taxMode, 'tax_basis_points': taxBasisPoints,
       });
       return _draft(tx, draftId, actor);
     });
@@ -324,12 +348,13 @@ class LocalSales {
           throw StateError('Insufficient stock for ${item.productName}.');
         }
       }
-      final total = draft.subtotal + tax;
+      final taxAmount = draft.pricingVersion == 1 ? draft.taxAmount : tax;
+      final total = draft.pricingVersion == 1 ? draft.total : draft.subtotal + tax;
       final id = await tx.insert('local_bills', {
         'customer_id':
             draft.customerId == 'guest' ? null : _id(draft.customerId),
         'subtotal': draft.subtotal,
-        'tax_amount': tax,
+        'tax_amount': taxAmount,
         'total': total,
         'payment_method': paymentMethod,
         'created_at': LocalStock.now(),
@@ -343,6 +368,8 @@ class LocalSales {
           await tx.insert('local_direct_bill_items', {
             'bill_id': id, 'product_name': item.productName,
             'price_paise': direct.single['price_paise'], 'quantity': item.quantity,
+            'tax_mode': item.taxMode, 'tax_basis_points': item.taxBasisPoints,
+            'tax_minor': item.taxMinor,
           });
           continue;
         }
@@ -365,6 +392,8 @@ class LocalSales {
           'product_name': item.productName,
           'price': item.price,
           'quantity': item.quantity,
+          'tax_mode': item.taxMode, 'tax_basis_points': item.taxBasisPoints,
+          'tax_minor': item.taxMinor,
         });
       }
       await tx.delete('local_draft_items',
@@ -376,7 +405,7 @@ class LocalSales {
       return {
         'bill_id': id,
         'subtotal': draft.subtotal,
-        'tax': tax,
+        'tax': taxAmount,
         'total': total
       };
     });
@@ -394,8 +423,11 @@ class LocalSales {
               productName: item['product_name'] as String,
               price: (item['price'] as num).toDouble(),
               quantity: item['quantity'] as int,
-              subtotal:
-                  (item['price'] as num).toDouble() * (item['quantity'] as int),
+              subtotal: (item['price'] as num).toDouble() * (item['quantity'] as int) +
+                  (item['tax_mode'] == 'additional' ? (item['tax_minor'] as int) / 100 : 0),
+              taxMode: item['tax_mode'] as String,
+              taxBasisPoints: item['tax_basis_points'] as int,
+              taxMinor: item['tax_minor'] as int,
             ))
         .toList();
     final directItems = await tx.query('local_direct_bill_items',
@@ -406,7 +438,11 @@ class LocalSales {
       final quantity = item['quantity'] as int;
       return BillItem(id: itemId, billId: id, productId: itemId,
           productName: item['product_name'] as String, price: price,
-          quantity: quantity, subtotal: price * quantity);
+          quantity: quantity,
+          subtotal: price * quantity + (item['tax_mode'] == 'additional' ? (item['tax_minor'] as int) / 100 : 0),
+          taxMode: item['tax_mode'] as String,
+          taxBasisPoints: item['tax_basis_points'] as int,
+          taxMinor: item['tax_minor'] as int);
     }));
     return Bill(
       id: id,

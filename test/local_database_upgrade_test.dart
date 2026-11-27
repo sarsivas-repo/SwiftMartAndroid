@@ -10,7 +10,7 @@ import 'package:swiftmart_frontend/services/local_users.dart';
 void main() {
   setUpAll(sqfliteFfiInit);
 
-  for (final oldVersion in [1, 2, 3, 4]) {
+  for (final oldVersion in [1, 2, 3, 4, 5]) {
     test('upgrade from version $oldVersion preserves local data', () async {
       final directory =
           await Directory.systemTemp.createTemp('swiftmart-upgrade-');
@@ -22,7 +22,7 @@ void main() {
               onCreate: (db, version) async {
                 await LocalUsers.createSchema(db);
                 if (version >= 2) await LocalStock.createSchema(db);
-                if (version >= 2) await db.execute('DROP TABLE local_purchase_entries');
+                if (version >= 2 && version < 5) await db.execute('DROP TABLE local_purchase_entries');
                 if (version >= 3) {
                   await LocalSales.createSchema(db);
                   if (version == 3) {
@@ -52,10 +52,19 @@ void main() {
             'updated_at': '2025-01-01',
           });
         }
+        if (oldVersion >= 3) {
+          await db.insert('local_drafts', {
+            'id': 1, 'owner_id': 1, 'created_at': '2025-01-01',
+          });
+          await db.insert('local_draft_items', {
+            'draft_id': 1, 'product_id': 1, 'product_name': 'Rice',
+            'price': 10, 'quantity': 2,
+          });
+        }
         await db.close();
         db = await databaseFactoryFfi.openDatabase(path,
             options: OpenDatabaseOptions(
-                version: 5, onUpgrade: LocalDatabase.upgradeSchema));
+                version: 6, onUpgrade: LocalDatabase.upgradeSchema));
         expect((await db.query('local_users')).single['username'], 'admin');
         expect(await db.query('local_products'),
             hasLength(oldVersion >= 2 ? 1 : 0));
@@ -63,6 +72,15 @@ void main() {
         expect(await db.query('local_direct_draft_items'), isEmpty);
         expect(await db.query('local_direct_bill_items'), isEmpty);
         expect(await db.query('local_purchase_entries'), isEmpty);
+        if (oldVersion >= 2) {
+          expect((await db.query('local_products')).single['tax_mode'], 'none');
+        }
+        if (oldVersion >= 3) {
+          expect((await db.query('local_drafts')).single['pricing_version'], 0);
+          final item = (await db.query('local_draft_items')).single;
+          expect(item['quantity'], 2);
+          expect(item['tax_mode'], 'none');
+        }
         await db.close();
       } finally {
         await directory.delete(recursive: true);

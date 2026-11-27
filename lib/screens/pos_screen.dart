@@ -679,7 +679,7 @@ class _POSScreenState extends State<POSScreen> {
                       ),
                       const SizedBox(height: 8),
                       _TotalRow(
-                        label: 'Tax (${(billProvider.taxRate * 100).toStringAsFixed(2)}%)',
+                        label: billProvider.currentBill?.pricingVersion == 0 ? 'Tax (older bill)' : 'Tax',
                         value: AppUtils.formatCurrency(billProvider.currentTax),
                       ),
                       const Divider(height: 16),
@@ -703,6 +703,8 @@ class _POSScreenState extends State<POSScreen> {
     var name = '';
     var quantity = '1';
     var price = '';
+    var taxMode = 'none';
+    var taxRate = '0';
     String? error;
     var saving = false;
     await showDialog<void>(
@@ -724,6 +726,22 @@ class _POSScreenState extends State<POSScreen> {
                 TextFormField(onChanged: (value) => price = value,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(labelText: 'Price per item')),
+                DropdownButtonFormField<String>(
+                  initialValue: taxMode,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Sales tax'),
+                  items: const [
+                    DropdownMenuItem(value: 'none', child: Text('No tax recorded / final price')),
+                    DropdownMenuItem(value: 'inclusive', child: Text('Tax included in price')),
+                    DropdownMenuItem(value: 'additional', child: Text('Add tax separately')),
+                  ],
+                  onChanged: saving ? null : (value) => setDialogState(() => taxMode = value!),
+                ),
+                if (taxMode != 'none')
+                  TextFormField(initialValue: taxRate,
+                      onChanged: (value) => taxRate = value,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Tax rate %')),
                 if (error != null)
                   Text(error!, style: const TextStyle(color: Colors.red)),
               ],
@@ -739,17 +757,24 @@ class _POSScreenState extends State<POSScreen> {
                 final count = int.tryParse(quantity.trim());
                 final match = RegExp(r'^(\d{1,8})(?:\.(\d{1,2}))?$')
                     .firstMatch(price.trim());
+                final rateMatch = RegExp(r'^(\d{1,3})(?:\.(\d{1,2}))?$')
+                    .firstMatch(taxRate.trim());
+                final rate = taxMode == 'none' ? 0 : rateMatch == null ? null :
+                    int.parse(rateMatch.group(1)!) * 100 +
+                    int.parse((rateMatch.group(2) ?? '').padRight(2, '0'));
                 if (name.trim().isEmpty || count == null ||
-                    count <= 0 || count > 1000000 || match == null) {
+                    count <= 0 || count > 1000000 || match == null ||
+                    rate == null || rate > 10000) {
                   setDialogState(() => error =
-                      'Enter a name, quantity and valid price (up to 2 decimals).');
+                      'Enter a name, quantity, valid price and tax rate (0–100%).');
                   return;
                 }
                 final paise = int.parse(match.group(1)!) * 100 +
                     int.parse((match.group(2) ?? '').padRight(2, '0'));
                 setDialogState(() { saving = true; error = null; });
                 final bills = context.read<BillProvider>();
-                final success = await bills.addDirectItem(name.trim(), count, paise);
+                final success = await bills.addDirectItem(name.trim(), count, paise,
+                    taxMode: taxMode, taxBasisPoints: rate);
                 if (!dialogContext.mounted) return;
                 if (success) {
                   Navigator.pop(dialogContext);
@@ -809,6 +834,13 @@ class _POSScreenState extends State<POSScreen> {
         );
         return;
       }
+    }
+    if (billProvider.currentBill!.pricingVersion == 0 && product.taxMode != 'none') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('This older bill cannot apply product tax. Start a new bill.')));
+      }
+      return;
     }
 
     final success = await billProvider.addItemToCurrentBill(
@@ -1414,7 +1446,9 @@ class _POSScreenState extends State<POSScreen> {
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
                         children: [
-                          Expanded(child: Text(item.productName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          Expanded(child: Text(
+                              item.taxDescription.isEmpty ? item.productName : '${item.productName} (${item.taxDescription})',
+                              maxLines: 2, overflow: TextOverflow.ellipsis)),
                           Text('${item.quantity} x ${AppUtils.formatCurrency(item.price)}'),
                           const SizedBox(width: 10),
                           Text(AppUtils.formatCurrency(item.subtotal)),
@@ -1574,7 +1608,9 @@ class _POSScreenState extends State<POSScreen> {
 
   String _buildCustomerMessage(Bill bill, String customerName) {
     final lines = bill.items.map((item) =>
-        '${item.productName}: ${item.quantity} x ${AppUtils.formatCurrency(item.price)} = ${AppUtils.formatCurrency(item.subtotal)}');
+        '${item.productName}: ${item.quantity} x ${AppUtils.formatCurrency(item.price)}'
+        '${item.taxDescription.isEmpty ? '' : ' (${item.taxDescription})'}'
+        ' = ${AppUtils.formatCurrency(item.subtotal)}');
     return '${AppUtils.shopName}\nBill ${bill.id} - ${_formatDateTime(bill.createdAt)}'
         '\nCustomer: $customerName\n${lines.join('\n')}'
         '\nSubtotal: ${AppUtils.formatCurrency(bill.subtotal)}'
@@ -1622,7 +1658,7 @@ class _POSScreenState extends State<POSScreen> {
       return '''
         <tr>
           <td class="center">$idx</td>
-          <td>${_escapeHtml(item.productName)}</td>
+          <td>${_escapeHtml(item.productName)}${item.taxDescription.isEmpty ? '' : '<br><small>${_escapeHtml(item.taxDescription)}</small>'}</td>
           <td class="num">${item.quantity}</td>
           <td class="num">${_escapeHtml(AppUtils.formatCurrency(item.price))}</td>
           <td class="num">${_escapeHtml(AppUtils.formatCurrency(item.subtotal))}</td>

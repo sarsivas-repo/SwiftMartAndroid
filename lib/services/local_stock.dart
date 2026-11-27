@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
+import 'local_pricing.dart';
 import 'local_users.dart';
 
 class LocalStock {
@@ -128,23 +129,12 @@ class LocalStock {
   Future<Map<String, dynamic>> purchase(
       String productId, String requestId, int quantity, int unitCostMinor,
       String taxMode, int taxBasisPoints, String supplier, String invoiceReference) async {
-    const maxMinor = 9999999999;
     if (!RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(requestId) ||
-        quantity <= 0 || quantity > 1000000 || unitCostMinor < 0 ||
-        unitCostMinor > maxMinor ~/ quantity || taxBasisPoints < 0 || taxBasisPoints > 10000 ||
-        !{'none', 'inclusive', 'additional'}.contains(taxMode) ||
-        (taxMode == 'none' && taxBasisPoints != 0) ||
         supplier.trim().runes.length > 255 || invoiceReference.trim().runes.length > 255) {
       throw ArgumentError('Invalid purchase.');
     }
-    final amount = unitCostMinor * quantity;
-    final base = taxMode == 'inclusive'
-        ? (amount * 10000 + (10000 + taxBasisPoints) ~/ 2) ~/ (10000 + taxBasisPoints)
-        : amount;
-    final tax = taxMode == 'inclusive' ? amount - base :
-        taxMode == 'additional' ? (amount * taxBasisPoints + 5000) ~/ 10000 : 0;
-    final total = base + tax;
-    if (total > maxMinor) throw ArgumentError('Purchase total is too large.');
+    final amounts = LocalPricing.amounts(unitCostMinor, quantity, taxBasisPoints, taxMode);
+    final base = amounts.base, tax = amounts.tax, total = amounts.total;
     return db.transaction((tx) async {
       final actor = await users.requireRoles(tx, _all);
       final product = await _product(tx, productId);
@@ -172,6 +162,20 @@ class LocalStock {
           where: 'id = ?', whereArgs: [productId]);
       await log(tx, product, actor, 'add', quantity, 'Purchase #$id');
       return {'purchase_id': id, 'subtotal_minor': base, 'tax_minor': tax, 'total_minor': total};
+    });
+  }
+
+  Future<void> updatePricing(String productId, String taxMode, int taxBasisPoints,
+      int? mrpMinor) async {
+    await db.transaction((tx) async {
+      await users.requireRoles(tx, _managers);
+      final existing = await _product(tx, productId);
+      LocalPricing.amounts((existing.price * 100).round(), 1, taxBasisPoints,
+          taxMode, mrpMinor: mrpMinor);
+      await tx.update('local_products', {
+        'tax_mode': taxMode, 'tax_basis_points': taxBasisPoints,
+        'mrp_minor': mrpMinor, 'updated_at': now(),
+      }, where: 'id = ?', whereArgs: [productId]);
     });
   }
 

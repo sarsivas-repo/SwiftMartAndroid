@@ -27,9 +27,12 @@ not synchronize data; salary and reporting workflows are not available in
 standalone mode. Connected mode still uses the server.
 
 Sales can include **Sell without stock** items without changing inventory in
-either mode; connected mode requires a direct-sale-capable backend. Checkout
-currently adds no tax. Configurable per-item sales tax is not yet available;
-confirm tax obligations independently. In Stock, open a product and select
+either mode; connected mode requires a tax-aware backend. In Stock, open a
+product and select **Sales tax settings** for no tax recorded, tax included in
+the entered price, or tax added separately. An optional MRP sets a maximum
+final price. Direct-sale items have the same choices. Existing bill lines keep
+their original pricing, and older drafts retain their original calculation.
+In Stock, open a product and select
 **Record purchase** to save supplier cost, quantity and purchase tax treatment.
 The stock increase and purchase record are saved together. On an uncertain
 result, retry unchanged in the same dialog or check before starting again.

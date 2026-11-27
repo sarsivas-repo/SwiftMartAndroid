@@ -303,6 +303,23 @@ class ApiService {
     }
   }
 
+  static Future<void> updateProductPricing(String productId, String taxMode,
+      int taxBasisPoints, int? mrpMinor) async {
+    if (_localUsers case final local?) {
+      return LocalStock(local).updatePricing(productId, taxMode, taxBasisPoints, mrpMinor);
+    }
+    final response = await http.put(
+      Uri.parse('$_baseUrl/stock/pricing/$productId'),
+      headers: _getHeaders(),
+      body: jsonEncode({'tax_mode': taxMode, 'tax_basis_points': taxBasisPoints,
+          'mrp_minor': mrpMinor}),
+    );
+    if (response.statusCode != 200) {
+      final data = _decodeBody(response.body);
+      throw Exception(data['error']?.toString() ?? 'Failed to update sales tax');
+    }
+  }
+
   static Future<Map<String, dynamic>> recordPurchase({
     required String productId,
     required String requestId,
@@ -428,11 +445,14 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$_baseUrl/billing/drafts'),
       headers: _getHeaders(),
-      body: jsonEncode({'customer_id': customerId}),
+      body: jsonEncode({'customer_id': customerId, 'pricing_version': 1}),
     );
 
     final data = _decodeBody(response.body);
     if (response.statusCode == 201) {
+      if ((data['draft'] as Map)['pricing_version'] != 1) {
+        throw StateError('The server does not support sales-tax pricing. Update the server before creating a bill.');
+      }
       return Bill.fromJson(
         _mapBackendDraftBill(Map<String, dynamic>.from(data['draft'] as Map)),
       );
@@ -485,14 +505,17 @@ class ApiService {
   }
 
   static Future<Bill> addDirectItemToDraftBill(
-      String draftId, String name, int quantity, int pricePaise) async {
+      String draftId, String name, int quantity, int pricePaise,
+      {String taxMode = 'none', int taxBasisPoints = 0}) async {
     if (_localUsers case final local?) {
-      return LocalSales(local).addDirectItem(draftId, name, quantity, pricePaise);
+      return LocalSales(local).addDirectItem(draftId, name, quantity, pricePaise,
+          taxMode: taxMode, taxBasisPoints: taxBasisPoints);
     }
     final response = await http.post(
       Uri.parse('$_baseUrl/billing/drafts/$draftId/direct-items'),
       headers: _getHeaders(),
-      body: jsonEncode({'name': name, 'quantity': quantity, 'price_paise': pricePaise}),
+      body: jsonEncode({'name': name, 'quantity': quantity, 'price_paise': pricePaise,
+          'tax_mode': taxMode, 'tax_basis_points': taxBasisPoints}),
     );
     final data = _decodeBody(response.body);
     if (response.statusCode == 200) {
@@ -1132,6 +1155,9 @@ class ApiService {
       'price': _asDouble(json['price']),
       'quantity': _asInt(json['quantity']),
       'reorder_level': reorderLevel,
+      'tax_mode': json['tax_mode'] ?? 'none',
+      'tax_basis_points': _asInt(json['tax_basis_points']),
+      'mrp_minor': json['mrp_minor'] == null ? null : _asInt(json['mrp_minor']),
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     };
@@ -1197,7 +1223,12 @@ class ApiService {
             'product_name': item['product_name']?.toString() ?? '',
             'price': _asDouble(item['price']),
             'quantity': _asInt(item['quantity']),
-            'subtotal': _asDouble(item['subtotal']),
+            'subtotal': json['pricing_version'] == 1
+                ? _asInt(item['line_total_minor']) / 100
+                : _asDouble(item['subtotal']),
+            'tax_mode': item['tax_mode'] ?? 'none',
+            'tax_basis_points': _asInt(item['tax_basis_points']),
+            'tax_minor': _asInt(item['tax_minor']),
           },
         )
         .toList();
@@ -1207,12 +1238,13 @@ class ApiService {
       'id': json['id']?.toString() ?? '',
       'customer_id': customerId?.toString() ?? 'guest',
       'subtotal': subtotal,
-      'tax_amount': 0,
-      'total': subtotal,
+      'tax_amount': json['pricing_version'] == 1 ? _asDouble(json['tax']) : 0,
+      'total': json['pricing_version'] == 1 ? _asDouble(json['total']) : subtotal,
       'status': 'pending',
       'payment_method': 'cash',
       'created_at': json['updated_at']?.toString() ?? json['created_at']?.toString() ?? DateTime.now().toIso8601String(),
       'items': items,
+      'pricing_version': _asInt(json['pricing_version']),
     };
   }
 

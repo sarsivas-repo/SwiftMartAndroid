@@ -9,6 +9,7 @@ import 'package:swiftmart_frontend/models/models.dart';
 import 'package:swiftmart_frontend/providers/product_provider.dart';
 import 'package:swiftmart_frontend/services/api_service.dart';
 import 'package:swiftmart_frontend/widgets/purchase_dialog.dart';
+import 'package:swiftmart_frontend/widgets/sales_tax_dialog.dart';
 
 class _Products extends ProductProvider {
   @override
@@ -16,6 +17,45 @@ class _Products extends ProductProvider {
 }
 
 void main() {
+  testWidgets('phone sales tax settings save the selected mode and rate', (tester) async {
+    ApiService.configureServer('https://example.test/api');
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      return http.Response('{}', 200);
+    });
+    final product = Product(id: '1', name: 'Rice', sku: '001', category: 'Food',
+        price: 100, quantity: 0, reorderLevel: 1,
+        createdAt: DateTime(2026), updatedAt: DateTime(2026));
+    await http.runWithClient(() async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(ChangeNotifierProvider<ProductProvider>(
+        create: (_) => _Products(),
+        child: MaterialApp(home: Scaffold(body: Builder(builder: (context) =>
+          TextButton(onPressed: () => showDialog<void>(
+              context: context, builder: (_) => SalesTaxDialog(product: product)),
+              child: const Text('Open'))))),
+      ));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('No tax recorded / final price').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tax included in price').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextFormField, 'Tax rate %'), '18');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Maximum final price / MRP (optional)'), '118');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+      expect(jsonDecode(requests.single.body), {
+        'tax_mode': 'inclusive', 'tax_basis_points': 1800, 'mrp_minor': 11800,
+      });
+      expect(tester.takeException(), isNull);
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    }, () => client);
+  });
+
   testWidgets('phone purchase records extra tax and supplier cost', (tester) async {
     ApiService.configureServer('https://example.test/api');
     final requests = <http.Request>[];

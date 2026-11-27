@@ -95,6 +95,9 @@ class Product {
   final double price;
   final int quantity;
   final int reorderLevel;
+  final String taxMode;
+  final int taxBasisPoints;
+  final int? mrpMinor;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -106,6 +109,9 @@ class Product {
     required this.price,
     required this.quantity,
     required this.reorderLevel,
+    this.taxMode = 'none',
+    this.taxBasisPoints = 0,
+    this.mrpMinor,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -122,6 +128,9 @@ class Product {
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       quantity: json['quantity'] as int? ?? 0,
       reorderLevel: reorderRaw is int ? reorderRaw : int.tryParse('${reorderRaw ?? ''}') ?? 10,
+      taxMode: json['tax_mode'] as String? ?? 'none',
+      taxBasisPoints: json['tax_basis_points'] as int? ?? 0,
+      mrpMinor: json['mrp_minor'] as int?,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
     );
@@ -135,6 +144,9 @@ class Product {
     'price': price,
     'quantity': quantity,
     'reorder_level': reorderLevel,
+    'tax_mode': taxMode,
+    'tax_basis_points': taxBasisPoints,
+    'mrp_minor': mrpMinor,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -149,6 +161,9 @@ class Product {
     double? price,
     int? quantity,
     int? reorderLevel,
+    String? taxMode,
+    int? taxBasisPoints,
+    int? mrpMinor,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -160,6 +175,9 @@ class Product {
       price: price ?? this.price,
       quantity: quantity ?? this.quantity,
       reorderLevel: reorderLevel ?? this.reorderLevel,
+      taxMode: taxMode ?? this.taxMode,
+      taxBasisPoints: taxBasisPoints ?? this.taxBasisPoints,
+      mrpMinor: mrpMinor ?? this.mrpMinor,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -174,6 +192,15 @@ class BillItem {
   final double price;
   final int quantity;
   final double subtotal;
+  final String taxMode;
+  final int taxBasisPoints;
+  final int taxMinor;
+
+  String get taxDescription {
+    if (taxMode == 'none') return '';
+    final rate = (taxBasisPoints / 100).toStringAsFixed(2);
+    return taxMode == 'inclusive' ? '$rate% tax included' : '$rate% tax added';
+  }
 
   BillItem({
     required this.id,
@@ -183,6 +210,9 @@ class BillItem {
     required this.price,
     required this.quantity,
     required this.subtotal,
+    this.taxMode = 'none',
+    this.taxBasisPoints = 0,
+    this.taxMinor = 0,
   });
 
   factory BillItem.fromJson(Map<String, dynamic> json) {
@@ -194,6 +224,9 @@ class BillItem {
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       quantity: json['quantity'] as int? ?? 0,
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
+      taxMode: json['tax_mode'] as String? ?? 'none',
+      taxBasisPoints: json['tax_basis_points'] as int? ?? 0,
+      taxMinor: json['tax_minor'] as int? ?? 0,
     );
   }
 
@@ -205,6 +238,9 @@ class BillItem {
     'price': price,
     'quantity': quantity,
     'subtotal': subtotal,
+    'tax_mode': taxMode,
+    'tax_basis_points': taxBasisPoints,
+    'tax_minor': taxMinor,
   };
 
   BillItem copyWith({
@@ -215,6 +251,9 @@ class BillItem {
     double? price,
     int? quantity,
     double? subtotal,
+    String? taxMode,
+    int? taxBasisPoints,
+    int? taxMinor,
   }) {
     return BillItem(
       id: id ?? this.id,
@@ -224,6 +263,9 @@ class BillItem {
       price: price ?? this.price,
       quantity: quantity ?? this.quantity,
       subtotal: subtotal ?? this.subtotal,
+      taxMode: taxMode ?? this.taxMode,
+      taxBasisPoints: taxBasisPoints ?? this.taxBasisPoints,
+      taxMinor: taxMinor ?? this.taxMinor,
     );
   }
 }
@@ -238,6 +280,7 @@ class Bill {
   final String paymentMethod;
   final DateTime createdAt;
   final List<BillItem> items;
+  final int pricingVersion;
 
   Bill({
     required this.id,
@@ -249,6 +292,7 @@ class Bill {
     required this.paymentMethod,
     required this.createdAt,
     required this.items,
+    this.pricingVersion = 0,
   });
 
   factory Bill.fromJson(Map<String, dynamic> json) {
@@ -269,6 +313,7 @@ class Bill {
       paymentMethod: json['payment_method'] ?? 'cash',
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       items: items,
+      pricingVersion: json['pricing_version'] as int? ?? 0,
     );
   }
 
@@ -282,6 +327,7 @@ class Bill {
     'payment_method': paymentMethod,
     'created_at': createdAt.toIso8601String(),
     'items': items.map((item) => item.toJson()).toList(),
+    'pricing_version': pricingVersion,
   };
 
   Bill copyWith({
@@ -305,6 +351,7 @@ class Bill {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       createdAt: createdAt ?? this.createdAt,
       items: items ?? this.items,
+      pricingVersion: pricingVersion,
     );
   }
 }

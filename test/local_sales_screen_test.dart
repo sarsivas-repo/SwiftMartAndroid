@@ -23,8 +23,9 @@ class _BillProvider extends BillProvider {
   Future<void> createNewBill(String customerId) async {}
 
   @override
-  Future<bool> addDirectItem(String name, int quantity, int pricePaise) async {
-    added = '$name:$quantity:$pricePaise';
+  Future<bool> addDirectItem(String name, int quantity, int pricePaise,
+      {String taxMode = 'none', int taxBasisPoints = 0}) async {
+    added = '$name:$quantity:$pricePaise:$taxMode:$taxBasisPoints';
     return true;
   }
 }
@@ -97,9 +98,14 @@ void main() {
     await tester.enterText(find.widgetWithText(TextFormField, 'Item name'), 'Eggs');
     await tester.enterText(find.widgetWithText(TextFormField, 'Quantity'), '10');
     await tester.enterText(find.widgetWithText(TextFormField, 'Price per item'), '6.50');
+    await tester.tap(find.text('No tax recorded / final price').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add tax separately').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Tax rate %'), '5.25');
     await tester.tap(find.widgetWithText(FilledButton, 'Add item'));
     await tester.pumpAndSettle();
-    expect(bills.added, 'Eggs:10:650');
+    expect(bills.added, 'Eggs:10:650:additional:525');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     tester.view.resetPhysicalSize();

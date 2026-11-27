@@ -6,6 +6,7 @@ import '../providers/app_settings_provider.dart';
 import '../models/models.dart';
 import '../widgets/product_widgets.dart';
 import '../widgets/purchase_dialog.dart';
+import '../widgets/sales_tax_dialog.dart';
 import '../utils/app_utils.dart';
 import '../utils/constants.dart';
 import '../services/api_service.dart';
@@ -567,7 +568,7 @@ class _AllProductsTab extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(product.name),
-        content: Column(
+        content: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -599,6 +600,21 @@ class _AllProductsTab extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () {
                   Navigator.pop(dialogContext);
+                  showDialog<void>(
+                    context: parentContext,
+                    builder: (_) => SalesTaxDialog(product: product),
+                  );
+                },
+                icon: const Icon(Icons.percent),
+                label: const Text('Sales tax settings'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
                   _showEditReorderLevelDialog(parentContext, product);
                 },
                 icon: const Icon(Icons.edit_note),
@@ -614,7 +630,7 @@ class _AllProductsTab extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),

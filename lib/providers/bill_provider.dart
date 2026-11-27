@@ -32,12 +32,11 @@ class BillProvider extends ChangeNotifier {
   String? get error => _error;
   double get taxRate => _taxRate;
 
-  double get currentSubtotal =>
-      currentBill?.items.fold<double>(0.0, (sum, item) => sum + item.subtotal) ?? 0.0;
+  double get currentSubtotal => currentBill?.subtotal ?? 0.0;
 
-  double get currentTax => (currentSubtotal * _taxRate * 100).round() / 100;
+  double get currentTax => currentBill?.taxAmount ?? 0.0;
 
-  double get currentTotal => currentSubtotal + currentTax;
+  double get currentTotal => currentBill?.total ?? 0.0;
 
   int get currentItemCount => currentBill?.items.length ?? 0;
 
@@ -113,15 +112,22 @@ class BillProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> addDirectItem(String name, int quantity, int pricePaise) async {
+  Future<bool> addDirectItem(String name, int quantity, int pricePaise,
+      {String taxMode = 'none', int taxBasisPoints = 0}) async {
     final active = currentBill;
     if (active == null) return false;
+    if (active.pricingVersion != 1 && taxMode != 'none') {
+      _error = 'Tax options require a new bill. This older draft uses its original pricing.';
+      notifyListeners();
+      return false;
+    }
     _isLoading = true;
     _error = null;
     notifyListeners();
     try {
       final updated = await ApiService.addDirectItemToDraftBill(
-          active.id, name, quantity, pricePaise);
+          active.id, name, quantity, pricePaise, taxMode: taxMode,
+          taxBasisPoints: taxBasisPoints);
       _replaceOpenBill(updated);
       return true;
     } catch (e) {
