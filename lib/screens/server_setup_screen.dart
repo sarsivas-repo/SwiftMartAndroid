@@ -86,6 +86,31 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
             FilledButton(
                 onPressed: _saving ? null : _save,
                 child: const Text('Continue')),
+            const Divider(height: 40),
+            const Text(
+              'Standalone test preview: local accounts and role management only. Sales, stock, customers and reports are not yet available.',
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      setState(() {
+                        _saving = true;
+                        _error = null;
+                      });
+                      try {
+                        await context.read<ServerSettings>().useLocal();
+                      } catch (error) {
+                        if (mounted)
+                          setState(() =>
+                              _error = 'Cannot open test database: $error');
+                      } finally {
+                        if (mounted) setState(() => _saving = false);
+                      }
+                    },
+              child: const Text('Standalone test preview'),
+            ),
           ],
         ),
       );

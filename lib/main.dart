@@ -12,6 +12,7 @@ import 'screens/login_screen.dart';
 import 'screens/change_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/server_setup_screen.dart';
+import 'screens/local_account_screen.dart';
 import 'services/server_settings.dart';
 import 'utils/constants.dart';
 
@@ -75,6 +76,9 @@ class MyApp extends StatelessWidget {
                     }
                     if (server.address == null)
                       return const ServerSetupScreen();
+                    if (server.address == ServerSettings.localAddress) {
+                      return const LocalAccountScreen();
+                    }
                     if (!authProvider.isLoggedIn) return const LoginScreen();
                     if (authProvider.shouldPromptPasswordChange)
                       return const ChangePasswordScreen();

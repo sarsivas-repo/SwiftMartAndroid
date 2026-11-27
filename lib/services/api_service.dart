@@ -1,17 +1,31 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/models.dart';
+import 'local_users.dart';
 
 class ApiService {
   static String _baseUrl = '';
   static String? _authToken;
+  static LocalUsers? _localUsers;
 
   static void configureServer(String baseUrl) {
+    _localUsers?.logout();
+    _localUsers = null;
     _authToken = null;
     _baseUrl = baseUrl;
   }
 
+  static void configureLocal(LocalUsers users) {
+    _authToken = null;
+    _baseUrl = '';
+    _localUsers = users;
+  }
+
   static Future<Map<String, dynamic>> login(String username, String password) async {
+    if (_localUsers case final local?) {
+      final user = await local.login(username, password);
+      return {'user': user.toJson()};
+    }
     final response = await http.post(
       Uri.parse('$_baseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
@@ -28,10 +42,14 @@ class ApiService {
   }
 
   static Future<void> logout() async {
+    _localUsers?.logout();
     _authToken = null;
   }
 
   static Future<Map<String, dynamic>> getMe() async {
+    if (_localUsers case final local?) {
+      return {'user': (await local.currentUser()).toJson()};
+    }
     final response = await http.get(
       Uri.parse('$_baseUrl/auth/me'),
       headers: _getHeaders(),
@@ -45,6 +63,7 @@ class ApiService {
   }
 
   static Future<List<User>> getUsers() async {
+    if (_localUsers case final local?) return local.listUsers();
     final response = await http.get(
       Uri.parse('$_baseUrl/auth/users'),
       headers: _getHeaders(),
@@ -69,6 +88,9 @@ class ApiService {
     if (roles.length != 1) {
       throw ArgumentError('Exactly one role is required');
     }
+    if (_localUsers case final local?) {
+      return local.createUser(username, email, password, roles.single);
+    }
     final role = roles.single.name;
     final response = await http.post(
       Uri.parse('$_baseUrl/auth/users'),
@@ -89,6 +111,7 @@ class ApiService {
   }
 
   static Future<void> changeMyPassword(String currentPassword, String newPassword) async {
+    if (_localUsers case final local?) return local.changePassword(currentPassword, newPassword);
     final response = await http.post(
       Uri.parse('$_baseUrl/auth/change-password'),
       headers: _getHeaders(),
@@ -105,6 +128,7 @@ class ApiService {
   }
 
   static Future<void> adminUpdateUserPassword(String userId, String newPassword) async {
+    if (_localUsers case final local?) return local.resetPassword(userId, newPassword);
     final response = await http.put(
       Uri.parse('$_baseUrl/auth/users/$userId/password'),
       headers: _getHeaders(),
@@ -121,6 +145,7 @@ class ApiService {
     required String email,
     required String mobile,
   }) async {
+    if (_localUsers case final local?) return local.updateProfile(email: email, mobile: mobile);
     final response = await http.put(
       Uri.parse('$_baseUrl/auth/me/profile'),
       headers: _getHeaders(),
@@ -145,6 +170,10 @@ class ApiService {
     if (roles.length != 1) {
       throw ArgumentError('Exactly one role is required');
     }
+    if (_localUsers case final local?) {
+      return local.updateUser(userId, username: username, email: email,
+          mobile: mobile, role: roles.single, active: isActive);
+    }
     final role = roles.single.name;
     final response = await http.put(
       Uri.parse('$_baseUrl/auth/users/$userId'),
@@ -166,6 +195,7 @@ class ApiService {
   }
 
   static Future<void> deleteUser(String userId, {bool hardDelete = false}) async {
+    if (_localUsers case final local?) return local.deleteUser(userId);
     final response = await http.delete(
       Uri.parse('$_baseUrl/auth/users/$userId'),
       headers: _getHeaders(),
@@ -178,6 +208,7 @@ class ApiService {
   }
 
   static Future<bool> shouldShowDefaultAdminHint() async {
+    if (_localUsers != null) return false;
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/auth/setup-status'),
