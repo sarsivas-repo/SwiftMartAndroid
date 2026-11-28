@@ -128,6 +128,9 @@ class _POSScreenState extends State<POSScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return _buildPhoneSales();
+    }
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -702,6 +705,270 @@ class _POSScreenState extends State<POSScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPhoneSales() {
+    return Consumer4<AuthProvider, CustomerProvider, ProductProvider, BillProvider>(
+      builder: (context, auth, customers, products, bills, _) {
+        _syncSelectedCustomerFromCurrentBill(bills, customers);
+        final customerMatches = _getMatchingCustomers(
+            customers.customers, _customerController.text);
+        final productMatches =
+            _getMatchingProducts(products.products, _skuController.text);
+        final items = bills.currentBill?.items ?? <BillItem>[];
+        final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F9F7),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            children: [
+              Row(children: [
+                Expanded(
+                  child: Text('New sale',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold)),
+                ),
+                if (auth.isCashier && !auth.isAdmin && !auth.isManager)
+                  _CashierInlineBadge(
+                    authProvider: auth,
+                    onProfileTap: _showCashierProfileDialog,
+                  ),
+              ]),
+              const SizedBox(height: 4),
+              const Text('Add products and check out in a few taps'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _customerController,
+                focusNode: _customerFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'Customer',
+                  prefixIcon: const Icon(Icons.person_outline),
+                  suffixIcon: IconButton(
+                    tooltip: 'Change customer',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: _clearCustomerSearch,
+                  ),
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                onTap: () => setState(() => _showCustomerSuggestions = true),
+                onChanged: (_) {
+                  if (_isProgrammaticCustomerUpdate) return;
+                  setState(() {
+                    _selectedCustomerId = null;
+                    _showCustomerSuggestions = true;
+                  });
+                },
+              ),
+              if (_showCustomerSuggestions)
+                Card(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    ListTile(
+                      leading: const Icon(Icons.person_outline),
+                      title: const Text(_guestCustomerName),
+                      onTap: _selectGuestCustomer,
+                    ),
+                    ...customerMatches.map((customer) => ListTile(
+                          title: Text(customer.name),
+                          subtitle: Text(customer.phone),
+                          trailing: IconButton(
+                            tooltip: 'Edit customer',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () => _showEditCustomerDialogPOS(customer),
+                          ),
+                          onTap: () => _selectCustomer(customer),
+                        )),
+                    ListTile(
+                      leading: const Icon(Icons.person_add_alt_1),
+                      title: const Text('Add Customer'),
+                      onTap: () => _showAddCustomerDialog(
+                          initialName: _customerController.text.trim()),
+                    ),
+                  ]),
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _skuController,
+                focusNode: _skuFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'Product',
+                  hintText: 'Search name or code',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _skuController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear product',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() {
+                            _skuController.clear();
+                            _selectedProductId = null;
+                            _lockedSelectedProductName = null;
+                            _showSkuSuggestions = false;
+                          }),
+                        ),
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                onTap: () {
+                  if (_lockedSelectedProductName != null) {
+                    setState(() {
+                      _lockedSelectedProductName = null;
+                      _selectedProductId = null;
+                    });
+                  }
+                  if (_skuController.text.trim().isNotEmpty) {
+                    setState(() => _showSkuSuggestions = true);
+                  }
+                },
+                onChanged: (value) {
+                  if (_isProgrammaticSkuUpdate) return;
+                  setState(() {
+                    _lockedSelectedProductName = null;
+                    _selectedProductId = null;
+                    _showSkuSuggestions = value.trim().isNotEmpty;
+                  });
+                },
+                onSubmitted: (_) => _addItemToBill(),
+              ),
+              if (_showSkuSuggestions && productMatches.isNotEmpty)
+                Card(
+                  child: Column(
+                    children: productMatches.map((product) => ListTile(
+                      title: Text(product.name),
+                      subtitle: Text(
+                          '${product.sku} · Stock: ${product.quantity} · ${AppUtils.formatCurrency(product.price)}'),
+                      onTap: () => _selectProduct(product),
+                    )).toList(),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _quantityController,
+                    keyboardType: TextInputType.number,
+                    onSubmitted: (_) => _addItemToBill(),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: bills.isLoading ? null : _addItemToBill,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add item'),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              _ActiveBillDropdown(
+                openBills: bills.openBills,
+                activeBillId: bills.activeBillId,
+                customerProvider: customers,
+                onSelectBill: (id) async {
+                  await bills.switchToBill(id);
+                  if (mounted) _syncSelectedCustomerFromCurrentBill(bills, customers);
+                },
+                onRemoveBill: (id) async {
+                  final removed = await bills.closeBill(id);
+                  if (!context.mounted) return;
+                  if (!removed) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(bills.error ?? 'Unable to remove active bill')));
+                    return;
+                  }
+                  if (bills.currentBill == null) {
+                    await bills.createNewBill(_guestCustomerId);
+                  }
+                  if (mounted) _syncSelectedCustomerFromCurrentBill(bills, customers);
+                },
+              ),
+              const SizedBox(height: 18),
+              Row(children: [
+                Expanded(
+                  child: Text('Current bill',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold)),
+                ),
+                Text('${items.length} items'),
+              ]),
+              const SizedBox(height: 8),
+              if (items.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('Search for a product or sell without stock to start a sale.'),
+                  ),
+                ),
+              ...items.map((item) => BillItemCard(
+                    item: item,
+                    onUpdateQuantity: () => _showUpdateQuantityDialog(item),
+                    onRemove: () async {
+                      final removed = await bills.removeItemFromBill(item.id);
+                      if (!removed && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(bills.error ?? 'Unable to remove item.')));
+                      }
+                    },
+                  )),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                OutlinedButton.icon(
+                  onPressed: bills.isLoading ? null : _showDirectSaleDialog,
+                  icon: const Icon(Icons.add_shopping_cart),
+                  label: const Text('Sell without stock'),
+                ),
+                if (!ApiService.isLocal)
+                  OutlinedButton(
+                    onPressed: _showPaymentHistory,
+                    child: const Text('Payment history'),
+                  ),
+              ]),
+              if (bills.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(bills.error!,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+            ],
+          ),
+          bottomNavigationBar: keyboardOpen
+              ? null
+              : SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: Colors.white,
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Total'),
+                            Text(AppUtils.formatCurrency(bills.currentTotal),
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                      FilledButton(
+                        onPressed: items.isNotEmpty && !bills.isLoading
+                            ? () => _showCheckoutDialog(context)
+                            : null,
+                        child: const Text('Checkout'),
+                      ),
+                    ]),
+                  ),
+                ),
+        );
+      },
     );
   }
 
@@ -1302,10 +1569,18 @@ class _POSScreenState extends State<POSScreen> {
         title: const Text('Checkout'),
         content: Consumer<BillProvider>(
           builder: (context, billProvider, _) {
-            return Column(
+            return SingleChildScrollView(child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Total: ${AppUtils.formatCurrency(billProvider.currentTotal)}'),
+                Text('Amount due', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 4),
+                Text(AppUtils.formatCurrency(billProvider.currentTotal),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Subtotal: ${AppUtils.formatCurrency(billProvider.currentSubtotal)}'),
+                Text('Tax: ${AppUtils.formatCurrency(billProvider.currentTax)}'),
                 const SizedBox(height: 16),
                 if (ApiService.isLocal) DropdownButton<String>(
                   isExpanded: true,
@@ -1324,7 +1599,7 @@ class _POSScreenState extends State<POSScreen> {
                 if (billProvider.error != null)
                   Text(billProvider.error!, style: const TextStyle(color: Colors.red)),
               ],
-            );
+            ));
           },
         ),
         actions: [

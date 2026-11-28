@@ -136,6 +136,9 @@ class _LocalHome extends StatefulWidget {
 }
 
 class _LocalHomeState extends State<_LocalHome> {
+  int _selectedPage = 0;
+  bool _showMore = false;
+
   @override
   void initState() {
     super.initState();
@@ -164,6 +167,94 @@ class _LocalHomeState extends State<_LocalHome> {
       if (auth.isAdmin) const CustomersScreen(),
       if (auth.isAdmin) const UserManagementScreen(),
     ];
+    if (MediaQuery.sizeOf(context).width < 600 && screens.isNotEmpty) {
+      final primary = <int>[
+        for (var i = 0; i < tabs.length; i++)
+          if (tabs[i].text == 'Sales' || tabs[i].text == 'Stock') i,
+      ];
+      final more = <int>[
+        for (var i = 0; i < tabs.length; i++)
+          if (!primary.contains(i)) i,
+      ];
+      final selectedPage = _selectedPage < screens.length ? _selectedPage : 0;
+      final selectedPrimary = primary.indexOf(selectedPage);
+      final showMore = _showMore && more.isNotEmpty;
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('SwiftMart'),
+          actions: [
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: auth.logout,
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: Column(children: [
+          Container(
+            width: double.infinity,
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: const Text('Standalone: data stays on this phone.'),
+          ),
+          Expanded(
+            child: showMore
+                ? ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Text('More', style: Theme.of(context).textTheme.headlineSmall),
+                      const SizedBox(height: 12),
+                      Card(child: Column(children: [
+                        ...more.map((index) => ListTile(
+                              leading: Icon(tabs[index].text == 'Customers'
+                                  ? Icons.people_outline
+                                  : Icons.manage_accounts_outlined),
+                              title: Text(tabs[index].text!),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => setState(() {
+                                _selectedPage = index;
+                                _showMore = false;
+                              }),
+                            )),
+                      ])),
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text('Salary and reports are not available in standalone mode.'),
+                      ),
+                    ],
+                  )
+                : screens[selectedPage],
+          ),
+        ]),
+        bottomNavigationBar: primary.length + (more.isNotEmpty ? 1 : 0) < 2
+            ? null
+            : NavigationBar(
+                selectedIndex:
+                    more.isNotEmpty && (showMore || selectedPrimary < 0)
+                        ? primary.length
+                        : selectedPrimary,
+                onDestinationSelected: (index) => setState(() {
+                  if (index == primary.length) {
+                    _showMore = true;
+                  } else {
+                    _showMore = false;
+                    _selectedPage = primary[index];
+                  }
+                }),
+                destinations: [
+                  ...primary.map((index) => NavigationDestination(
+                        icon: Icon(tabs[index].text == 'Sales'
+                            ? Icons.shopping_cart_outlined
+                            : Icons.inventory_2_outlined),
+                        label: tabs[index].text!,
+                      )),
+                  if (more.isNotEmpty)
+                    const NavigationDestination(
+                        icon: Icon(Icons.more_horiz), label: 'More'),
+                ],
+              ),
+      );
+    }
     return DefaultTabController(
       length: tabs.length,
       child: Scaffold(

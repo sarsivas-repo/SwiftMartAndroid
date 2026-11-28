@@ -48,6 +48,33 @@ class _ReceiptBills extends _BillProvider {
   Future<bool> checkout(double paidAmount, String paymentMethod) async => true;
 }
 
+class _ProductBills extends _BillProvider {
+  String? productAdded;
+  final draft = Bill(
+    id: '1', customerId: 'guest', subtotal: 0, taxAmount: 0, total: 0,
+    status: BillStatus.pending, paymentMethod: 'cash',
+    createdAt: DateTime(2026), items: const [],
+  );
+  @override
+  Bill get currentBill => draft;
+  @override
+  List<Bill> get openBills => [draft];
+  @override
+  Future<bool> addItemToCurrentBill(String productId, int quantity) async {
+    productAdded = '$productId:$quantity';
+    return true;
+  }
+}
+
+class _Products extends ProductProvider {
+  @override
+  List<Product> get products => [
+    Product(id: 'rice', name: 'Rice', sku: 'R01', category: 'Grocery',
+        price: 65, quantity: 24, reorderLevel: 5,
+        createdAt: DateTime(2026), updatedAt: DateTime(2026)),
+  ];
+}
+
 void main() {
   late Database db;
   setUpAll(() async {
@@ -93,6 +120,14 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Sell without stock'),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(POSScreen),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     await tester.tap(find.text('Sell without stock'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, 'Item name'), 'Eggs');
@@ -155,5 +190,33 @@ void main() {
     messenger.setMockMethodCallHandler(const MethodChannel('com.swiftmart/printing'), null);
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
+  });
+
+  testWidgets('phone sales can select a product and add a quantity', (tester) async {
+    tester.view.physicalSize = const Size(360, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final bills = _ProductBills();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
+        ChangeNotifierProvider<ProductProvider>(create: (_) => _Products()),
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider<BillProvider>.value(value: bills),
+      ],
+      child: const MaterialApp(home: POSScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Product'), 'R01');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rice'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '2');
+    await tester.tap(find.text('Add item'));
+    await tester.pumpAndSettle();
+    expect(bills.productAdded, 'rice:2');
+    expect(tester.takeException(), isNull);
   });
 }

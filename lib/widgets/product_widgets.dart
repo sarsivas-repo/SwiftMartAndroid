@@ -98,6 +98,33 @@ class CustomerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final firstChar = customer.name.isNotEmpty ? customer.name[0].toUpperCase() : '?';
 
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          leading: CircleAvatar(child: Text(firstChar)),
+          title: Text(customer.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (customer.phone.isNotEmpty) Text(customer.phone),
+              if (customer.email.isNotEmpty) Text(customer.email),
+              if (customer.address.isNotEmpty) Text(customer.address),
+            ],
+          ),
+          trailing: onEdit == null
+              ? const Icon(Icons.chevron_right)
+              : IconButton(
+                  tooltip: 'Edit customer',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+          onTap: onTap,
+        ),
+      );
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(

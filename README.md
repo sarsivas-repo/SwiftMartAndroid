@@ -4,10 +4,16 @@ This project adapts the Flutter application from `SwiftMart-Frontend` for Androi
 It is a work in progress, not a production release: standalone salary and
 reports are not yet implemented.
 
-Each release provides one signed [APK](release/SwiftMart-1.0.11-android.apk). Publisher:
+Each release provides one signed [APK](release/SwiftMart-1.0.12-android.apk). Publisher:
 **Saravanakumar**. Verify them against [SHA256SUMS](release/SHA256SUMS); publishing
 details are in [BUILD-INFO.txt](release/BUILD-INFO.txt). They have not been
 validated on a physical Android device.
+
+On phones, sales uses stacked customer and product controls, a bill summary and
+a checkout button. Stock shows searchable product cards; use **More** for
+additional pages available to your role. Standalone and connected modes keep
+their existing data and capabilities; standalone reporting and salary remain
+unavailable.
 
 ## Renewable licenses
 

@@ -133,6 +133,10 @@ class _StockScreenState extends State<StockScreen> with TickerProviderStateMixin
               elevation: 0,
               bottom: TabBar(
                 controller: _tabController,
+                isScrollable: MediaQuery.sizeOf(context).width < 600,
+                tabAlignment: MediaQuery.sizeOf(context).width < 600
+                    ? TabAlignment.start
+                    : null,
                 tabs: _stockTabs(),
               ),
             ),
@@ -506,7 +510,14 @@ class _StockScreenState extends State<StockScreen> with TickerProviderStateMixin
   }
 }
 
-class _AllProductsTab extends StatelessWidget {
+class _AllProductsTab extends StatefulWidget {
+  @override
+  State<_AllProductsTab> createState() => _AllProductsTabState();
+}
+
+class _AllProductsTabState extends State<_AllProductsTab> {
+  String _query = '';
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ProductProvider>(
@@ -515,8 +526,83 @@ class _AllProductsTab extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
+        if (productProvider.error != null) {
+          return Center(child: Text(productProvider.error!));
+        }
+
         if (productProvider.products.isEmpty) {
           return const Center(child: Text('No products found'));
+        }
+
+        if (MediaQuery.sizeOf(context).width < 600) {
+          final products = productProvider.products.where((product) {
+            final query = _query.trim().toLowerCase();
+            return product.name.toLowerCase().contains(query) ||
+                product.sku.toLowerCase().contains(query) ||
+                product.category.toLowerCase().contains(query);
+          }).toList();
+          return Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Search products',
+                  hintText: 'Name, code or category',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
+            Expanded(
+              child: products.isEmpty
+                  ? const Center(child: Text('No matching products'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                      itemCount: products.length,
+                      itemBuilder: (context, index) {
+                        final product = products[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _showProductDetailsDialog(context, product),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Expanded(
+                                      child: Text(product.name,
+                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(product.isLowStock ? 'Low stock' : 'In stock',
+                                        style: TextStyle(
+                                            color: product.isLowStock
+                                                ? Colors.deepOrange.shade700
+                                                : Colors.green.shade700,
+                                            fontWeight: FontWeight.bold)),
+                                  ]),
+                                  const SizedBox(height: 4),
+                                  Text('${product.sku} · ${product.category}'),
+                                  const Divider(height: 24),
+                                  Wrap(spacing: 24, runSpacing: 8, children: [
+                                    Text('Available: ${product.quantity}'),
+                                    Text('Price: ${AppUtils.formatCurrency(product.price)}'),
+                                    Text('Minimum: ${product.reorderLevel}'),
+                                  ]),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ]);
         }
 
         return Column(
@@ -840,6 +926,10 @@ class _LowStockTab extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
+        if (productProvider.error != null) {
+          return Center(child: Text(productProvider.error!));
+        }
+
         if (productProvider.lowStockAlerts.isEmpty) {
           return const Center(child: Text('No low stock items'));
         }
@@ -849,6 +939,22 @@ class _LowStockTab extends StatelessWidget {
           itemCount: productProvider.lowStockAlerts.length,
           itemBuilder: (context, index) {
             final product = productProvider.lowStockAlerts[index];
+            if (MediaQuery.sizeOf(context).width < 600) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: Icon(Icons.warning_amber, color: Colors.deepOrange.shade700),
+                  title: Text(product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                      'Available: ${product.quantity} · Minimum: ${product.reorderLevel}\n'
+                      'Price: ${AppUtils.formatCurrency(product.price)}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showRestockDialog(context, product),
+                ),
+              );
+            }
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               color: Colors.red.shade50,
@@ -917,6 +1023,10 @@ class _StockLogsTab extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
+        if (productProvider.error != null) {
+          return Center(child: Text(productProvider.error!));
+        }
+
         if (productProvider.stockLogs.isEmpty) {
           return const Center(child: Text('No stock logs'));
         }
@@ -926,6 +1036,20 @@ class _StockLogsTab extends StatelessWidget {
           itemCount: productProvider.stockLogs.length,
           itemBuilder: (context, index) {
             final log = productProvider.stockLogs[index];
+            if (MediaQuery.sizeOf(context).width < 600) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: Icon(log.type == 'add' ? Icons.add_circle : Icons.remove_circle),
+                  title: Text(log.productName,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                      '${log.type.toUpperCase()} ${log.quantity} units · ${log.username} (${log.role.toUpperCase()})\n'
+                      '${log.createdAt.toString().split('.')[0]}'),
+                ),
+              );
+            }
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: Padding(

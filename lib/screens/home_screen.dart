@@ -23,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   TabController? _tabController;
   int _selectedTab = 0;
+  bool _showMobileMore = false;
   static const double _desktopTabCardWidth = 132;
 
   @override
@@ -500,7 +501,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final authProvider = context.watch<AuthProvider>();
-    final settingsVersion = context.watch<AppSettingsProvider>().settingsVersion;
     final tabs = _getTabs(authProvider);
     final hasSingleTab = tabs.length == 1;
 
@@ -531,6 +531,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     _syncTabControllerLength(tabs.length);
+
+    if (isMobile) {
+      return _buildPhoneHome(tabs, authProvider);
+    }
 
     return WillPopScope(
       onWillPop: () async => false,
@@ -628,6 +632,102 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     .toList(),
               )
             : null,
+      ),
+    );
+  }
+
+  Widget _buildPhoneHome(List<_DashboardTab> tabs, AuthProvider auth) {
+    final primary = <int>[
+      for (var i = 0; i < tabs.length; i++)
+        if (const ['Sales', 'Stock', 'Reports'].contains(tabs[i].title)) i,
+    ];
+    final more = <int>[
+      for (var i = 0; i < tabs.length; i++)
+        if (!primary.contains(i)) i,
+    ];
+    final selectedPrimary = primary.indexOf(_selectedTab);
+    final showMore = _showMobileMore && more.isNotEmpty;
+    final moreSelected = more.isNotEmpty && (showMore || selectedPrimary < 0);
+    return WillPopScope(
+      onWillPop: () async {
+        if (moreSelected && !showMore) {
+          setState(() => _showMobileMore = true);
+        }
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('SwiftMart'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _buildUserBadge(auth, compact: true),
+            ),
+          ],
+        ),
+        body: showMore
+            ? ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text('More',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Your shop tools and account'),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Column(
+                      children: more.map((index) {
+                        final tab = tabs[index];
+                        return ListTile(
+                          leading: Icon(tab.icon),
+                          title: Text(tab.title),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => setState(() {
+                            _selectedTab = index;
+                            _showMobileMore = false;
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  Card(
+                    child: Column(children: [
+                      ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: const Text('Profile'),
+                        onTap: _showProfileDialog,
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.logout),
+                        title: const Text('Sign out'),
+                        onTap: auth.logout,
+                      ),
+                    ]),
+                  ),
+                ],
+              )
+            : _buildMobileLayout(tabs),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: moreSelected ? primary.length : selectedPrimary,
+          onDestinationSelected: (index) => setState(() {
+            if (index == primary.length) {
+              _showMobileMore = true;
+            } else {
+              _showMobileMore = false;
+              _selectedTab = primary[index];
+            }
+          }),
+          destinations: [
+            ...primary.map((index) => NavigationDestination(
+                  icon: Icon(tabs[index].icon),
+                  label: tabs[index].title,
+                )),
+            if (more.isNotEmpty)
+              const NavigationDestination(
+                  icon: Icon(Icons.more_horiz), label: 'More'),
+          ],
+        ),
       ),
     );
   }

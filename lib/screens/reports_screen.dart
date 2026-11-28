@@ -82,6 +82,10 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: MediaQuery.sizeOf(context).width < 600,
+          tabAlignment: MediaQuery.sizeOf(context).width < 600
+              ? TabAlignment.start
+              : null,
           tabs: const [
             Tab(text: 'Daily Status', icon: Icon(Icons.today)),
             Tab(text: 'Monthly Trends', icon: Icon(Icons.calendar_month)),
